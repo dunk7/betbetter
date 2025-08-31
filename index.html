@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetBetter - The Slightly Advantageous Betting Game</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎰 BetBetter</h1>
+            <p>The game where the odds are ever so slightly in your favor...</p>
+        </header>
+
+        <div class="game-area">
+            <div class="balance-section">
+                <h2>Your Tokens: <span id="tokenBalance">50.00</span></h2>
+            </div>
+
+            <div class="bet-section">
+                <label for="betAmount">Bet Amount:</label>
+                <input type="number" id="betAmount" min="0.01" step="0.01" value="1.00">
+
+                <div class="choice-buttons">
+                    <button id="betHeads" class="bet-btn">Heads (Win)</button>
+                    <button id="betTails" class="bet-btn">Tails (Lose)</button>
+                </div>
+            </div>
+
+            <div class="result-section">
+                <div id="result" class="result-display"></div>
+                <div id="history" class="bet-history"></div>
+            </div>
+
+            <div class="stats-section">
+                <div class="stat">
+                    <span class="stat-label">Games Played:</span>
+                    <span id="gamesPlayed" class="stat-value">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Wins:</span>
+                    <span id="wins" class="stat-value">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">Win Rate:</span>
+                    <span id="winRate" class="stat-value">0%</span>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>House edge: 49.999% | Your advantage: 0.001%</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
