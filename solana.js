@@ -606,7 +606,7 @@ To get started with game tokens:
         if (!window.authManager?.token) return;
 
         try {
-            const response = await fetch(`${this.apiBase}/user/profile`, {
+            const response = await fetch(`${this.apiBase}/user-profile`, {
                 headers: {
                     'Authorization': `Bearer ${window.authManager.token}`
                 }
@@ -669,7 +669,7 @@ To get started with game tokens:
         try {
             console.log(`🔄 [BALANCE_RECONCILE] Starting balance reconciliation...`);
 
-            const response = await fetch(`${this.apiBase}/user/reconcile-balance`, {
+            const response = await fetch(`${this.apiBase}/user-reconcile-balance`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${window.authManager.token}`
