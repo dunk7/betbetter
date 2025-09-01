@@ -59,8 +59,6 @@ ehthumbs.db
 Thumbs.db
 
 # Security - NEVER commit these files
-*-keypair.json
-*keypair*.json
 *private*.json
 *secret*.json
 *.key

@@ -17,15 +17,14 @@ const PORT = process.env.PORT || 5000;
 const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 console.log('🔧 [INIT] USDC Mint address:', USDC_MINT.toString());
 
-// Treasury Wallet Setup (you'll need to provide these)
-const TREASURY_KEYPAIR_PATH = process.env.TREASURY_KEYPAIR_PATH || './casino-treasury-keypair.json'; // Path to keypair JSON file
-
+// Treasury Wallet Setup (from environment variable)
 let treasuryKeypair = null;
-if (TREASURY_KEYPAIR_PATH) {
+if (process.env.TREASURY_KEYPAIR) {
     try {
-        // Load keypair from file
-        const fs = require('fs');
-        const keypairData = JSON.parse(fs.readFileSync(TREASURY_KEYPAIR_PATH, 'utf8'));
+        // Load keypair from environment variable
+        const keypairString = process.env.TREASURY_KEYPAIR;
+        // Remove brackets and split by comma, then convert to numbers
+        const keypairData = keypairString.replace(/^\[|\]$/g, '').split(',').map(num => parseInt(num.trim()));
         treasuryKeypair = Keypair.fromSecretKey(new Uint8Array(keypairData));
         console.log('Treasury wallet loaded:', treasuryKeypair.publicKey.toString());
 
@@ -60,7 +59,7 @@ if (TREASURY_KEYPAIR_PATH) {
         console.error('Error loading treasury keypair:', error);
     }
 } else {
-    console.warn('TREASURY_KEYPAIR_PATH not set. Real USDC transactions will not work.');
+    console.warn('TREASURY_KEYPAIR environment variable not set. Real USDC transactions will not work.');
 }
 
 // Middleware
