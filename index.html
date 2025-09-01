@@ -9,13 +9,91 @@
 <body>
     <div class="container">
         <header>
-            <h1>BetBetter</h1>
-            <p>The game where the odds are ever so slightly in your favor...</p>
+            <div class="header-content">
+                <div class="logo-section">
+                    <h1>BetBetter</h1>
+                    <p>The game where the odds are ever so slightly in your favor...</p>
+                </div>
+                <div class="auth-section">
+                    <div id="user-info" class="user-info" style="display: none;">
+                                                <div class="user-avatar" id="user-avatar"></div>
+                <div class="user-details">
+                    <div class="user-name" id="user-name"></div>
+                    <div class="user-balance" id="user-usdc-balance">USDC: 0.0000</div>
+                </div>
+                        <button id="logout-btn" class="logout-btn">Logout</button>
+                    </div>
+                    <div id="login-section" class="login-section">
+                        <div id="g_id_onload"
+                             data-client_id="335219259903-qbihfsrgile0u1tf4ft5nvts87152por.apps.googleusercontent.com"
+                             data-context="signin"
+                             data-ux_mode="popup"
+                             data-callback="handleCredentialResponse"
+                             data-auto_select="true"
+                             data-itp_support="true">
+                        </div>
+                        <div class="g_id_signin"
+                             data-type="standard"
+                             data-shape="rectangular"
+                             data-theme="filled_black"
+                             data-text="signin_with"
+                             data-size="large"
+                             data-logo_alignment="left">
+                        </div>
+                    </div>
+                </div>
+            </div>
         </header>
 
         <div class="game-area">
             <div class="balance-section">
-                <h2>Your Tokens: <span id="tokenBalance">50.00</span></h2>
+                <h2>Your Tokens: <span id="tokenBalance">0.00</span></h2>
+                <div class="balance-info">
+                    <div class="usdc-balance">USDC Balance: <span id="usdcBalance">0.00</span></div>
+                    <div class="wallet-status" id="walletStatus">No wallet connected</div>
+                </div>
+                <div id="wallet-section" class="wallet-section" style="display: none;">
+                    <div class="wallet-controls">
+                        <div class="security-notice">
+                            <div class="security-badge">
+                                🔒 <strong>Secure System:</strong> Your wallet address is verified on first deposit
+                            </div>
+                        </div>
+
+                        <div class="treasury-info">
+                            <div class="treasury-address-display">
+                                <span>Treasury: </span>
+                                <span id="treasury-address-display">Loading...</span>
+                                <button id="copy-treasury-address-btn" class="copy-btn" title="Copy Treasury Address">📋</button>
+                            </div>
+                        </div>
+
+                        <div class="wallet-status" id="wallet-status" style="display: none;">
+                            <div class="wallet-verified">
+                                <span class="verified-icon">✅</span>
+                                <span>Wallet Verified: </span>
+                                <span id="verified-address">...</span>
+                            </div>
+                        </div>
+
+                        <div class="deposit-controls">
+                            <button id="deposit-btn" class="wallet-btn deposit-btn">📥 Deposit USDC</button>
+                            <div class="deposit-verification" style="display: none;">
+                                <input type="text" id="deposit-signature" placeholder="Enter transaction signature" style="width: 100%; margin: 5px 0;">
+                                <button id="verify-deposit-btn" class="wallet-btn verify-btn">✅ Verify Deposit</button>
+                            </div>
+                        </div>
+
+                        <div class="withdraw-controls">
+                            <input type="number" id="withdraw-amount" placeholder="Token amount" step="1" min="1">
+                            <button id="withdraw-btn" class="wallet-btn withdraw-btn">💸 Withdraw to Verified Wallet</button>
+                        </div>
+                    </div>
+                    <div id="transaction-history" class="transaction-history" style="display: none;">
+                        <h3>Recent Transactions</h3>
+                        <div id="transaction-list" class="transaction-list"></div>
+                    </div>
+                </div>
             </div>
 
             <div class="bet-section">
@@ -64,8 +142,36 @@
         </footer>
     </div>
 
+    <!-- Google OAuth -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+    <!-- Development Notice -->
+    <script>
+        // Show Google OAuth configuration notice
+        setTimeout(() => {
+            if (window.location.hostname === '127.0.0.1') {
+                console.warn('🔧 GOOGLE OAUTH CONFIGURATION NEEDED:');
+                console.warn('1. Go to Google Cloud Console: https://console.cloud.google.com/');
+                console.warn('2. Navigate to your OAuth 2.0 client');
+                console.warn('3. Add these authorized origins:');
+                console.warn('   - http://127.0.0.1:3000');
+                console.warn('   - http://127.0.0.1:35161');
+                console.warn('   - http://localhost:3000');
+                console.warn('4. Save and try again');
+            }
+        }, 2000);
+    </script>
+
+    <!-- Solana Web3.js -->
+    <script src="https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js"></script>
+
+    <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+
+    <!-- Game Scripts -->
+    <script src="auth.js"></script>
+    <script src="solana.js"></script>
     <script src="dice3d.js"></script>
     <script src="script.js?v=2"></script>
 </body>

@@ -178,9 +178,7 @@ class Dice3D {
             clearcoat: 0.8,
             clearcoatRoughness: 0.02,
             ior: 1.45,
-            thickness: 0.5,
             envMapIntensity: 1.2,
-            specularIntensity: 0.3,
             emissive: 0x111111,
             emissiveIntensity: 0.02
         });
@@ -212,9 +210,8 @@ class Dice3D {
             clearcoat: 0.95,
             clearcoatRoughness: 0.02,
             ior: 1.45,
-            thickness: 0.4,
             envMapIntensity: 1.2,
-                         emissive: 0x444444,
+            emissive: 0x444444,
             emissiveIntensity: 0.08
         });
 
@@ -267,7 +264,6 @@ class Dice3D {
             clearcoat: 0.95,
             clearcoatRoughness: 0.02,
             ior: 1.45,
-            thickness: 0.4,
             envMapIntensity: 1.2,
             emissive: 0x444444,
             emissiveIntensity: 0.08
