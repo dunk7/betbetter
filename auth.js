@@ -13,7 +13,7 @@ class AuthManager {
         // Check if we're running on Netlify (production)
         if (window.location.hostname.includes('netlify.app')) {
             // Use your production backend URL here
-            return 'https://your-backend-domain.com/api';
+            return 'https://primimus.netlify.app.com/api';
         }
         // Development fallback
         return 'http://localhost:5000/api';
