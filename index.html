@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BetBetter - The Slightly Advantageous Betting Game</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🎰 BetBetter</h1>
+            <h1>BetBetter</h1>
             <p>The game where the odds are ever so slightly in your favor...</p>
         </header>
 
@@ -19,12 +19,21 @@
             </div>
 
             <div class="bet-section">
-                <label for="betAmount">Bet Amount:</label>
-                <input type="number" id="betAmount" min="0.01" step="0.01" value="1.00">
-
-                <div class="choice-buttons">
-                    <button id="betHeads" class="bet-btn">Heads (Win)</button>
-                    <button id="betTails" class="bet-btn">Tails (Lose)</button>
+                <div class="instant-bet-container">
+                    <div class="dice-full-display">
+                        <div id="diceCanvas" class="dice-canvas"></div>
+                        <div class="dice-overlay-controls">
+                            <div class="bet-controls">
+                                <label for="betAmount">Bet Amount:</label>
+                                <div class="control-group">
+                                    <input type="number" id="betAmount" min="0.01" step="0.01" value="1.00">
+                                </div>
+                                <div class="bet-button-container">
+                                    <button id="placeBet" class="bet-btn">PLACE BET</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -50,10 +59,14 @@
         </div>
 
         <footer>
-            <p>House edge: 49.999% | Your advantage: 0.001%</p>
+            <p>3D Dice Roll Casino - Premium Gaming Experience!</p>
+            <p>50.001% win chance with polished 3D dice - slight mathematical advantage!</p>
         </footer>
     </div>
 
-    <script src="script.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+    <script src="dice3d.js"></script>
+    <script src="script.js?v=2"></script>
 </body>
 </html>
