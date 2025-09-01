@@ -778,6 +778,26 @@ app.get('/api/treasury-address', async (req, res) => {
     }
 });
 
+// Get treasury balance (authenticated users only)
+app.get('/api/treasury-balance', authenticateToken, async (req, res) => {
+    try {
+        if (!treasuryKeypair) {
+            return res.status(500).json({ error: 'Treasury wallet not configured' });
+        }
+
+        const treasuryUsdcBalance = await getUSDCBalance(solanaConnection, treasuryKeypair.publicKey);
+
+        res.json({
+            usdcBalance: treasuryUsdcBalance,
+            formattedBalance: `${treasuryUsdcBalance.toFixed(2)} USDC`
+        });
+
+    } catch (error) {
+        console.error('Treasury balance fetch error:', error);
+        res.status(500).json({ error: 'Failed to fetch treasury balance' });
+    }
+});
+
 // Get transaction history
 app.get('/api/transactions', authenticateToken, async (req, res) => {
     try {

@@ -288,62 +288,56 @@ To deposit USDC and get game tokens:
         }
     }
 
-    async updateWalletBalance() {
-        if (!this.connection || !this.wallet) return;
+    async loadTreasuryBalance() {
+        if (!window.authManager?.token) return;
 
         try {
-            const balance = await this.connection.getBalance(this.wallet);
-            const SolanaWeb3 = window.solanaWeb3 || window.solana;
-        const solBalance = balance / SolanaWeb3.LAMPORTS_PER_SOL;
-
-            // Update UI
-            const balanceElement = document.getElementById('user-usdc-balance');
-            if (balanceElement) {
-                balanceElement.textContent = `USDC: ${solBalance.toFixed(4)}`; // Using SOL balance as proxy for USDC for now
-            }
-
-            this.userBalance = solBalance;
-        } catch (error) {
-            console.error('Error fetching balance:', error);
-
-            // Handle specific balance fetching errors
-            if (error.message && error.message.includes('403')) {
-                console.warn('Wallet address not found on network, using simulated balance');
-                // For demo purposes, set a simulated balance
-                this.userBalance = 10.0; // Simulated 10 USDC
-                const balanceElement = document.getElementById('user-usdc-balance');
-                if (balanceElement) {
-                    balanceElement.textContent = `USDC: ${this.userBalance.toFixed(4)}`;
+            const response = await fetch(`${this.apiBase}/treasury-balance`, {
+                headers: {
+                    'Authorization': `Bearer ${window.authManager.token}`
                 }
-            } else if (error.message && error.message.includes('Access forbidden')) {
-                console.warn('Access forbidden - wallet might be on different network');
-                this.userBalance = 5.0; // Simulated balance for demo
-                const balanceElement = document.getElementById('user-usdc-balance');
-                if (balanceElement) {
-                    balanceElement.textContent = `USDC: ${this.userBalance.toFixed(4)}`;
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const treasuryBalanceElement = document.getElementById('treasuryBalance');
+                if (treasuryBalanceElement) {
+                    treasuryBalanceElement.textContent = data.formattedBalance;
                 }
             } else {
-                this.showError('Failed to fetch wallet balance.');
+                console.log('Treasury balance not available');
+                const treasuryBalanceElement = document.getElementById('treasuryBalance');
+                if (treasuryBalanceElement) {
+                    treasuryBalanceElement.textContent = 'N/A';
+                }
+            }
+        } catch (error) {
+            console.error('Error loading treasury balance:', error);
+            const treasuryBalanceElement = document.getElementById('treasuryBalance');
+            if (treasuryBalanceElement) {
+                treasuryBalanceElement.textContent = 'N/A';
             }
         }
     }
 
     updateWalletUI() {
-        console.log(`🔄 [WALLET UI] Updating balances - Game: ${this.gameBalance}, USDC: ${this.userBalance}`);
+        console.log(`🔄 [WALLET UI] Updating balances - Game: ${this.gameBalance}`);
 
-        // Update token balance display with exact amount (no rounding)
+        // Update token balance display with proper precision handling
         const tokenBalance = document.getElementById('tokenBalance');
         if (tokenBalance) {
-            tokenBalance.textContent = this.gameBalance.toString();
-            console.log(`✅ [TOKEN BALANCE] Updated to: ${this.gameBalance.toString()}`);
+            const fixedBalance = Math.round(this.gameBalance * 100000000) / 100000000; // 8 decimal precision
+            // Format for display (avoid unnecessary decimals)
+            if (fixedBalance % 1 === 0) {
+                tokenBalance.textContent = fixedBalance.toString();
+            } else {
+                tokenBalance.textContent = fixedBalance.toFixed(Math.min(4, (fixedBalance.toString().split('.')[1] || '').length));
+            }
+            console.log(`✅ [TOKEN BALANCE] Updated to: ${tokenBalance.textContent}`);
         }
 
-        // Update USDC balance display
-        const usdcBalance = document.getElementById('usdcBalance');
-        if (usdcBalance) {
-            usdcBalance.textContent = this.userBalance.toFixed(4);
-            console.log(`✅ [USDC BALANCE] Updated to: ${this.userBalance.toFixed(4)}`);
-        }
+        // Load treasury balance
+        this.loadTreasuryBalance();
 
         // Update wallet status
         const walletStatus = document.getElementById('walletStatus');

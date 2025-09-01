@@ -167,7 +167,7 @@ header p {
     flex-wrap: wrap;
 }
 
-.usdc-balance, .wallet-status {
+.treasury-balance, .usdc-balance, .wallet-status {
     padding: 10px 20px;
     background: rgba(0, 255, 136, 0.1);
     border-radius: 10px;
@@ -175,6 +175,12 @@ header p {
     font-size: 0.9rem;
     font-weight: 500;
     color: #00ff88;
+}
+
+.treasury-balance {
+    background: rgba(255, 193, 7, 0.1);
+    border-color: rgba(255, 193, 7, 0.3);
+    color: #ffc107;
 }
 
 .wallet-status {

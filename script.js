@@ -77,8 +77,8 @@ class BetBetterGame {
     async onRollComplete() {
         const { won, betAmount } = this.outcomeResult;
 
-        // Calculate net amount
-        const netAmount = won ? betAmount : -betAmount;
+        // Calculate net amount with precision fixing
+        const netAmount = this.fixPrecision(won ? betAmount : -betAmount);
 
         // Update backend with game result
         if (window.authManager?.isAuthenticated) {
@@ -97,7 +97,7 @@ class BetBetterGame {
 
                 if (response.ok) {
                     const data = await response.json();
-                    this.tokens = data.newBalance;
+                    this.tokens = this.fixPrecision(data.newBalance);
 
                     // Update Solana manager balance
                     if (window.solanaManager) {
@@ -107,29 +107,29 @@ class BetBetterGame {
                     console.error('Failed to update backend balance');
                     // Fallback to local calculation
                     if (won) {
-                        this.tokens += betAmount;
+                        this.tokens = this.fixPrecision(this.tokens + betAmount);
                         this.wins++;
                     } else {
-                        this.tokens -= betAmount;
+                        this.tokens = this.fixPrecision(this.tokens - betAmount);
                     }
                 }
             } catch (error) {
                 console.error('Backend update error:', error);
                 // Fallback to local calculation
                 if (won) {
-                    this.tokens += betAmount;
+                    this.tokens = this.fixPrecision(this.tokens + betAmount);
                     this.wins++;
                 } else {
-                    this.tokens -= betAmount;
+                    this.tokens = this.fixPrecision(this.tokens - betAmount);
                 }
             }
         } else {
             // Not authenticated, use local calculation
             if (won) {
-                this.tokens += betAmount;
+                this.tokens = this.fixPrecision(this.tokens + betAmount);
                 this.wins++;
             } else {
-                this.tokens -= betAmount;
+                this.tokens = this.fixPrecision(this.tokens - betAmount);
             }
         }
 
@@ -286,9 +286,25 @@ class BetBetterGame {
         }
     }
 
+    // Helper function to fix floating point precision issues
+    fixPrecision(num, decimals = 8) {
+        return Math.round(num * Math.pow(10, decimals)) / Math.pow(10, decimals);
+    }
+
+    // Format number for display (avoid showing unnecessary decimals)
+    formatDisplay(num) {
+        const fixed = this.fixPrecision(num);
+        // If it's a whole number, show as integer
+        if (fixed % 1 === 0) {
+            return fixed.toString();
+        }
+        // Otherwise show with appropriate decimal places (max 4 for display)
+        return fixed.toFixed(Math.min(4, (fixed.toString().split('.')[1] || '').length));
+    }
+
     updateDisplay() {
-        // Show exact token amount without rounding
-        this.tokenBalance.textContent = this.tokens.toString();
+        // Show token amount with proper precision handling
+        this.tokenBalance.textContent = this.formatDisplay(this.tokens);
         this.gamesPlayedEl.textContent = this.gamesPlayed;
         this.winsEl.textContent = this.wins;
 
