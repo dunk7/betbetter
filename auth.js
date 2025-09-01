@@ -12,8 +12,8 @@ class AuthManager {
     getApiBaseUrl() {
         // Check if we're running on Netlify (production)
         if (window.location.hostname.includes('netlify.app')) {
-            // Use your production backend URL here
-            return 'https://primimus.netlify.app/api';
+            // Use Netlify Functions URLs
+            return 'https://primimus.netlify.app/.netlify/functions';
         }
         // Development fallback
         return 'http://localhost:5000/api';
@@ -74,7 +74,7 @@ class AuthManager {
 
     async verifyToken() {
         try {
-            const response = await fetch(`${this.apiBase}/user/profile`, {
+            const response = await fetch(`${this.apiBase}/user-profile`, {
                 headers: {
                     'Authorization': `Bearer ${this.token}`
                 }
@@ -93,7 +93,7 @@ class AuthManager {
     async handleCredentialResponse(response) {
         try {
             // Send Google token to backend for verification and user creation
-            const backendResponse = await fetch(`${this.apiBase}/auth/google`, {
+            const backendResponse = await fetch(`${this.apiBase}/auth-google`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -194,7 +194,7 @@ class AuthManager {
 
     async loadUserProfile() {
         try {
-            const response = await fetch(`${this.apiBase}/user/profile`, {
+            const response = await fetch(`${this.apiBase}/user-profile`, {
                 headers: {
                     'Authorization': `Bearer ${this.token}`
                 }

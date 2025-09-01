@@ -21,8 +21,8 @@ class BetBetterGame {
     getApiBaseUrl() {
         // Check if we're running on Netlify (production)
         if (window.location.hostname.includes('netlify.app')) {
-            // Use your production backend URL here
-            return 'https://primimus.netlify.app/api';
+            // Use Netlify Functions URLs
+            return 'https://primimus.netlify.app/.netlify/functions';
         }
         // Development fallback
         return 'http://localhost:5000/api';
@@ -95,7 +95,7 @@ class BetBetterGame {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-            const response = await fetch(`${this.apiBase}/game/place-bet`, {
+            const response = await fetch(`${this.apiBase}/game-place-bet`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -381,7 +381,7 @@ class BetBetterGame {
         if (!window.authManager?.isAuthenticated) return;
 
         try {
-            const response = await fetch(`${this.apiBase}/user/stats`, {
+            const response = await fetch(`${this.apiBase}/user-stats`, {
                 headers: {
                     'Authorization': `Bearer ${window.authManager.token}`
                 }
