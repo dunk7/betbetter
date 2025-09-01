@@ -13,6 +13,7 @@ class BetBetterGame {
         this.attachEventListeners();
         this.initialize3DDice();
         this.updateDisplay();
+        this.loadUserStats(); // Load accurate statistics from backend
     }
 
     initializeElements() {
@@ -286,7 +287,8 @@ class BetBetterGame {
     }
 
     updateDisplay() {
-        this.tokenBalance.textContent = this.tokens.toFixed(2);
+        // Show exact token amount without rounding
+        this.tokenBalance.textContent = this.tokens.toString();
         this.gamesPlayedEl.textContent = this.gamesPlayed;
         this.winsEl.textContent = this.wins;
 
@@ -304,6 +306,29 @@ class BetBetterGame {
 
         // Update betting availability
         this.checkBettingAvailability();
+    }
+
+    // Load accurate statistics from backend
+    async loadUserStats() {
+        if (!window.authManager?.isAuthenticated) return;
+
+        try {
+            const response = await fetch('http://localhost:5000/api/user/stats', {
+                headers: {
+                    'Authorization': `Bearer ${window.authManager.token}`
+                }
+            });
+
+            if (response.ok) {
+                const stats = await response.json();
+                this.gamesPlayed = stats.gamesPlayed;
+                this.wins = stats.wins;
+                this.updateDisplay();
+                console.log('Loaded user statistics:', stats);
+            }
+        } catch (error) {
+            console.error('Error loading user stats:', error);
+        }
     }
 
     gameOver() {

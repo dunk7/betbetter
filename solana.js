@@ -102,7 +102,7 @@ To deposit USDC and get game tokens:
 1. Copy the treasury address: ${this.treasuryAddress}
 2. Send USDC from your wallet to this address
 3. Use any Solana wallet (Phantom, Solflare, etc.)
-4. Exchange Rate: 1 USDC = 1 token
+4. Exchange Rate: 1 USDC = 1 token (minus 1¢ fee)
 
 🔐 Security Features:
 • Your wallet address will be verified and stored
@@ -112,7 +112,8 @@ To deposit USDC and get game tokens:
 
 ⚠️  Important:
 • Send USDC (not SOL or other tokens)
-• Minimum deposit: 0.01 USDC (0.01 tokens)
+• Minimum deposit: 0.02 USDC (0.01 tokens after 1¢ fee)
+• A 1¢ (0.01 USDC) fee is deducted for transaction costs
 • After sending, paste the transaction signature below
 • Processing may take a few seconds
 
@@ -177,10 +178,10 @@ To deposit USDC and get game tokens:
             if (data.walletVerified) {
                 this.showSuccess(`🎉 First deposit successful! Your wallet address has been verified and stored securely.`);
                 setTimeout(() => {
-                    this.showSuccess(`Successfully deposited ${data.usdcReceived} USDC (${data.gameTokensAdded} tokens)!`);
+                    this.showSuccess(`Successfully deposited ${data.usdcReceived} USDC (${data.feeDeducted}¢ fee deducted) → ${data.usdcAfterFee} USDC = ${data.gameTokensAdded} tokens!`);
                 }, 2000);
             } else {
-                this.showSuccess(`Successfully deposited ${data.usdcReceived} USDC (${data.gameTokensAdded} tokens)!`);
+                this.showSuccess(`Successfully deposited ${data.usdcReceived} USDC (${data.feeDeducted}¢ fee deducted) → ${data.usdcAfterFee} USDC = ${data.gameTokensAdded} tokens!`);
             }
 
             // Update UI
@@ -265,11 +266,11 @@ To deposit USDC and get game tokens:
     updateWalletUI() {
         console.log(`🔄 [WALLET UI] Updating balances - Game: ${this.gameBalance}, USDC: ${this.userBalance}`);
 
-        // Update token balance display
+        // Update token balance display with exact amount (no rounding)
         const tokenBalance = document.getElementById('tokenBalance');
         if (tokenBalance) {
-            tokenBalance.textContent = this.gameBalance.toFixed(2);
-            console.log(`✅ [TOKEN BALANCE] Updated to: ${this.gameBalance.toFixed(2)}`);
+            tokenBalance.textContent = this.gameBalance.toString();
+            console.log(`✅ [TOKEN BALANCE] Updated to: ${this.gameBalance.toString()}`);
         }
 
         // Update USDC balance display
@@ -515,6 +516,11 @@ To deposit USDC and get game tokens:
 
                 // Load transaction history
                 this.loadTransactionHistory();
+
+                // Load accurate user statistics
+                if (window.gameInstance && window.gameInstance.loadUserStats) {
+                    window.gameInstance.loadUserStats();
+                }
             } else {
                 console.log(`❌ [USER DATA] Failed to load profile: ${response.status}`);
             }

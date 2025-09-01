@@ -557,9 +557,15 @@ app.post('/api/deposit', authenticateToken, async (req, res) => {
             console.log(`🆕 [DEPOSIT] First deposit - setting verified wallet address for user ${user.email}: ${senderAddress}`);
         }
 
-        // Calculate game tokens (1 USDC = 1 token - 1:1 ratio)
-        const gameTokens = usdcTransferred;
-        console.log(`🧮 [DEPOSIT] Calculation: ${usdcTransferred} USDC = ${gameTokens} tokens`);
+        // Apply 1 cent (0.01 USDC) fee for transaction costs
+        const DEPOSIT_FEE = 0.01;
+        const usdcAfterFee = Math.max(0, usdcTransferred - DEPOSIT_FEE);
+        const feeAmount = usdcTransferred - usdcAfterFee;
+        console.log(`💰 [DEPOSIT] Fee calculation: ${usdcTransferred} USDC - ${DEPOSIT_FEE} fee = ${usdcAfterFee} USDC usable`);
+
+        // Calculate game tokens from USDC after fee (1 USDC = 1 token - 1:1 ratio)
+        const gameTokens = usdcAfterFee;
+        console.log(`🧮 [DEPOSIT] Calculation: ${usdcAfterFee} USDC = ${gameTokens} tokens`);
 
         // Update database
         const oldBalance = user.gameBalance;
@@ -591,6 +597,8 @@ app.post('/api/deposit', authenticateToken, async (req, res) => {
             newGameBalance: user.gameBalance,
             transactionSignature: transactionSignature,
             usdcReceived: usdcTransferred,
+            usdcAfterFee: usdcAfterFee,
+            feeDeducted: feeAmount,
             walletVerified: !user.solanaAddress
         };
 
@@ -770,6 +778,39 @@ app.get('/api/transactions', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Transaction fetch error:', error);
         res.status(500).json({ error: 'Failed to fetch transactions' });
+    }
+});
+
+// Get user statistics from transaction history
+app.get('/api/user/stats', authenticateToken, async (req, res) => {
+    try {
+        const transactions = await GameTransaction.find({
+            userId: req.user.userId,
+            type: { $in: ['bet_win', 'bet_loss'] }
+        });
+
+        let gamesPlayed = 0;
+        let wins = 0;
+
+        transactions.forEach(tx => {
+            gamesPlayed++;
+            if (tx.type === 'bet_win') {
+                wins++;
+            }
+        });
+
+        const winRate = gamesPlayed > 0 ? (wins / gamesPlayed * 100) : 0;
+
+        res.json({
+            gamesPlayed,
+            wins,
+            winRate: parseFloat(winRate.toFixed(2)),
+            totalTransactions: transactions.length
+        });
+
+    } catch (error) {
+        console.error('Stats fetch error:', error);
+        res.status(500).json({ error: 'Failed to fetch statistics' });
     }
 });
 
