@@ -442,18 +442,40 @@ app.post('/api/user/solana-address', authenticateToken, async (req, res) => {
 // Deposit USDC (User pays transaction fee)
 app.post('/api/deposit', authenticateToken, async (req, res) => {
     try {
-        const { transactionSignature } = req.body;
-        console.log(`🔍 [DEPOSIT] Starting deposit verification for user ${req.user.userId}`);
-
-        if (!transactionSignature) {
-            console.log(`❌ [DEPOSIT] Missing transaction signature`);
-            return res.status(400).json({ error: 'Transaction signature required' });
-        }
+        const { transactionSignature, autoUpdate } = req.body;
+        console.log(`🔍 [DEPOSIT] Starting deposit for user ${req.user.userId}`);
 
         const user = await User.findById(req.user.userId);
         if (!user) {
             console.log(`❌ [DEPOSIT] User not found: ${req.user.userId}`);
             return res.status(404).json({ error: 'User not found' });
+        }
+
+        // If user has verified wallet and requests auto-update, reconcile balance
+        if (autoUpdate && user.solanaAddress) {
+            console.log(`🔄 [DEPOSIT] Auto-updating balance for verified user ${user.email}`);
+
+            const calculatedBalance = await calculateBalanceFromHistory(req.user.userId);
+            const previousBalance = user.gameBalance;
+
+            user.gameBalance = calculatedBalance;
+            await user.save();
+
+            console.log(`✅ [AUTO_DEPOSIT] Balance updated: ${previousBalance} → ${calculatedBalance}`);
+
+            return res.json({
+                message: 'Balance automatically updated from transaction history',
+                gameTokensAdded: calculatedBalance - previousBalance,
+                newGameBalance: calculatedBalance,
+                autoUpdated: true,
+                walletVerified: true
+            });
+        }
+
+        // Manual verification required for new users or when autoUpdate is false
+        if (!transactionSignature) {
+            console.log(`❌ [DEPOSIT] Missing transaction signature`);
+            return res.status(400).json({ error: 'Transaction signature required' });
         }
         console.log(`👤 [DEPOSIT] Processing for user: ${user.email}, current balance: ${user.gameBalance}`);
 
@@ -811,6 +833,82 @@ app.get('/api/user/stats', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Stats fetch error:', error);
         res.status(500).json({ error: 'Failed to fetch statistics' });
+    }
+});
+
+// Calculate balance from verified transaction history
+async function calculateBalanceFromHistory(userId) {
+    try {
+        const transactions = await GameTransaction.find({
+            userId: userId,
+            status: 'completed'
+        }).sort({ timestamp: 1 }); // Sort by timestamp to process in order
+
+        let calculatedBalance = 0;
+
+        for (const tx of transactions) {
+            switch (tx.type) {
+                case 'deposit':
+                    // Deposits add tokens
+                    calculatedBalance += tx.tokenAmount || 0;
+                    console.log(`[BALANCE_CALC] +${tx.tokenAmount} from deposit: ${calculatedBalance}`);
+                    break;
+                case 'withdraw':
+                    // Withdrawals subtract tokens
+                    calculatedBalance -= tx.tokenAmount || 0;
+                    console.log(`[BALANCE_CALC] -${tx.tokenAmount} from withdrawal: ${calculatedBalance}`);
+                    break;
+                case 'bet_win':
+                    // Wins add tokens
+                    calculatedBalance += tx.tokenAmount || 0;
+                    console.log(`[BALANCE_CALC] +${tx.tokenAmount} from win: ${calculatedBalance}`);
+                    break;
+                case 'bet_loss':
+                    // Losses subtract tokens
+                    calculatedBalance -= tx.tokenAmount || 0;
+                    console.log(`[BALANCE_CALC] -${tx.tokenAmount} from loss: ${calculatedBalance}`);
+                    break;
+            }
+        }
+
+        console.log(`[BALANCE_CALC] Final calculated balance for user ${userId}: ${calculatedBalance}`);
+        return calculatedBalance;
+
+    } catch (error) {
+        console.error('Error calculating balance from history:', error);
+        return 0;
+    }
+}
+
+// Reconcile user balance with transaction history
+app.post('/api/user/reconcile-balance', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.userId);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        // Only reconcile if user has a verified wallet
+        if (!user.solanaAddress) {
+            return res.status(400).json({ error: 'No verified wallet address found' });
+        }
+
+        const calculatedBalance = await calculateBalanceFromHistory(req.user.userId);
+        const previousBalance = user.gameBalance;
+
+        // Update user balance to match calculated amount
+        user.gameBalance = calculatedBalance;
+        await user.save();
+
+        console.log(`[BALANCE_RECONCILE] User ${req.user.userId}: ${previousBalance} → ${calculatedBalance}`);
+
+        res.json({
+            previousBalance,
+            newBalance: calculatedBalance,
+            reconciled: true
+        });
+
+    } catch (error) {
+        console.error('Balance reconciliation error:', error);
+        res.status(500).json({ error: 'Balance reconciliation failed' });
     }
 });
 

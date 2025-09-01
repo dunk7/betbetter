@@ -88,14 +88,47 @@ class SolanaManager {
             return;
         }
 
+        // Check if user has verified wallet
+        const hasVerifiedWallet = this.userWalletAddress !== null;
+
         // Show deposit verification UI
         const verificationDiv = document.querySelector('.deposit-verification');
         if (verificationDiv) {
             verificationDiv.style.display = verificationDiv.style.display === 'none' ? 'block' : 'none';
         }
 
-        const instructions = `
-🛡️ SECURE DEPOSIT INSTRUCTIONS 🛡️
+        let instructions;
+        if (hasVerifiedWallet) {
+            // Instructions for verified users
+            instructions = `
+🔄 AUTO-UPDATE DEPOSIT SYSTEM 🔄
+
+Your wallet is already verified! No more manual verification needed.
+
+📋 How it works:
+1. Send USDC from your verified wallet to: ${this.treasuryAddress}
+2. Click "Verify Deposit" (no signature needed!)
+3. System automatically scans your transaction history
+4. Balance updates instantly with all recent transactions
+
+🎯 Benefits:
+• ⚡ Instant balance updates
+• 🔒 Still secure - only your verified wallet transactions count
+• 📊 Automatic calculation from complete transaction history
+• 💰 No more copying/pasting transaction signatures
+
+⚠️  Important:
+• Send from your verified wallet address
+• 1¢ fee still applies for transaction costs
+• Minimum deposit: 0.02 USDC
+• Use any Solana wallet (Phantom, Solflare, etc.)
+
+💡 The system automatically detects and processes all your transactions!
+            `;
+        } else {
+            // Instructions for new users
+            instructions = `
+🛡️ FIRST DEPOSIT - WALLET VERIFICATION 🛡️
 
 To deposit USDC and get game tokens:
 
@@ -106,7 +139,7 @@ To deposit USDC and get game tokens:
 
 🔐 Security Features:
 • Your wallet address will be verified and stored
-• Future deposits must come from the same address
+• Future deposits use automatic updates (no more signatures!)
 • Transaction signatures prevent double-processing
 • Only you can withdraw to your verified address
 
@@ -118,7 +151,10 @@ To deposit USDC and get game tokens:
 • Processing may take a few seconds
 
 💡 Tip: You can use https://solscan.io to verify your transaction
-        `;
+
+🚀 After first deposit, you'll never need to verify signatures again!
+            `;
+        }
 
         alert(instructions);
     }
@@ -127,13 +163,7 @@ To deposit USDC and get game tokens:
         const signatureInput = document.getElementById('deposit-signature');
         const signature = signatureInput?.value?.trim();
 
-        console.log(`🔍 [FRONTEND] Starting deposit verification with signature: ${signature}`);
-
-        if (!signature) {
-            console.log(`❌ [FRONTEND] No transaction signature provided`);
-            this.showError('Please enter the transaction signature from your USDC transfer.');
-            return;
-        }
+        console.log(`🔍 [FRONTEND] Starting deposit verification`);
 
         if (!window.authManager?.token) {
             console.log(`❌ [FRONTEND] No auth token available`);
@@ -141,9 +171,33 @@ To deposit USDC and get game tokens:
             return;
         }
 
+        // Check if user has verified wallet for auto-update
+        const hasVerifiedWallet = this.userWalletAddress !== null;
+        console.log(`🔍 [FRONTEND] User has verified wallet: ${hasVerifiedWallet}`);
+
         try {
-            console.log(`📤 [FRONTEND] Sending deposit verification request...`);
-            this.showInfo('Verifying deposit transaction...');
+            let requestBody;
+            let statusMessage;
+
+            if (hasVerifiedWallet) {
+                // Auto-update for verified users
+                console.log(`🔄 [FRONTEND] Using auto-update for verified user`);
+                requestBody = { autoUpdate: true };
+                statusMessage = 'Automatically updating balance from transaction history...';
+            } else {
+                // Manual verification for new users
+                if (!signature) {
+                    console.log(`❌ [FRONTEND] No transaction signature provided`);
+                    this.showError('Please enter the transaction signature from your USDC transfer.');
+                    return;
+                }
+                console.log(`📤 [FRONTEND] Using manual verification with signature: ${signature}`);
+                requestBody = { transactionSignature: signature };
+                statusMessage = 'Verifying deposit transaction...';
+            }
+
+            console.log(`📤 [FRONTEND] Sending deposit request...`);
+            this.showInfo(statusMessage);
 
             const response = await fetch(`${this.apiBase}/deposit`, {
                 method: 'POST',
@@ -151,7 +205,7 @@ To deposit USDC and get game tokens:
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${window.authManager.token}`
                 },
-                body: JSON.stringify({ transactionSignature: signature })
+                body: JSON.stringify(requestBody)
             });
 
             console.log(`📥 [FRONTEND] Deposit API response status: ${response.status}`);
@@ -174,13 +228,24 @@ To deposit USDC and get game tokens:
                 window.gameInstance.updateDisplay();
             }
 
-            // Handle wallet verification for first deposit
-            if (data.walletVerified) {
+            // Handle different response types
+            if (data.autoUpdated) {
+                // Auto-update success
+                this.showSuccess(`✅ Balance automatically updated! You now have ${data.newGameBalance} tokens.`);
+                if (data.gameTokensAdded !== 0) {
+                    setTimeout(() => {
+                        const sign = data.gameTokensAdded > 0 ? '+' : '';
+                        this.showSuccess(`${sign}${data.gameTokensAdded} tokens from recent transactions.`);
+                    }, 1500);
+                }
+            } else if (data.walletVerified) {
+                // First deposit success
                 this.showSuccess(`🎉 First deposit successful! Your wallet address has been verified and stored securely.`);
                 setTimeout(() => {
                     this.showSuccess(`Successfully deposited ${data.usdcReceived} USDC (${data.feeDeducted}¢ fee deducted) → ${data.usdcAfterFee} USDC = ${data.gameTokensAdded} tokens!`);
                 }, 2000);
             } else {
+                // Regular deposit success
                 this.showSuccess(`Successfully deposited ${data.usdcReceived} USDC (${data.feeDeducted}¢ fee deducted) → ${data.usdcAfterFee} USDC = ${data.gameTokensAdded} tokens!`);
             }
 
@@ -188,7 +253,7 @@ To deposit USDC and get game tokens:
             this.updateWalletUI();
             this.loadTransactionHistory();
 
-            // Clear input
+            // Clear input if it exists
             if (signatureInput) signatureInput.value = '';
 
             // Refresh user data to get updated wallet address
@@ -295,6 +360,9 @@ To deposit USDC and get game tokens:
         // Show wallet section if user is logged in
         const walletSection = document.getElementById('wallet-section');
         const transactionHistory = document.getElementById('transaction-history');
+        const depositBtn = document.getElementById('deposit-btn');
+        const verifyBtn = document.getElementById('verify-deposit-btn');
+        const signatureInput = document.getElementById('deposit-signature');
 
         if (walletSection && window.authManager?.isAuthenticated) {
             walletSection.style.display = 'block';
@@ -302,6 +370,27 @@ To deposit USDC and get game tokens:
 
             // Update wallet verification status
             this.updateWalletVerificationUI();
+
+            // Update deposit UI based on verification status
+            if (depositBtn && verifyBtn) {
+                if (this.userWalletAddress) {
+                    // Verified user - show auto-update option
+                    depositBtn.textContent = '🔄 Update Balance';
+                    verifyBtn.textContent = '✅ Auto Update Balance';
+                    if (signatureInput) {
+                        signatureInput.style.display = 'none';
+                        signatureInput.placeholder = 'Auto-update enabled - no signature needed!';
+                    }
+                } else {
+                    // New user - show manual verification
+                    depositBtn.textContent = '📥 Deposit USDC';
+                    verifyBtn.textContent = '✅ Verify Deposit';
+                    if (signatureInput) {
+                        signatureInput.style.display = 'block';
+                        signatureInput.placeholder = 'Enter transaction signature';
+                    }
+                }
+            }
         } else if (walletSection) {
             walletSection.style.display = 'none';
             if (transactionHistory) transactionHistory.style.display = 'none';
@@ -521,11 +610,65 @@ To deposit USDC and get game tokens:
                 if (window.gameInstance && window.gameInstance.loadUserStats) {
                     window.gameInstance.loadUserStats();
                 }
+
+                // Auto-reconcile balance for verified users
+                if (userData.solanaAddress) {
+                    console.log(`🔄 [BALANCE_RECONCILE] Auto-reconciling balance for verified user`);
+                    this.reconcileBalance();
+                }
             } else {
                 console.log(`❌ [USER DATA] Failed to load profile: ${response.status}`);
             }
         } catch (error) {
             console.error('Error loading user data:', error);
+        }
+    }
+
+    async reconcileBalance() {
+        if (!window.authManager?.token || !this.userWalletAddress) {
+            console.log(`❌ [BALANCE_RECONCILE] Missing auth token or verified wallet`);
+            return;
+        }
+
+        try {
+            console.log(`🔄 [BALANCE_RECONCILE] Starting balance reconciliation...`);
+
+            const response = await fetch(`${this.apiBase}/user/reconcile-balance`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${window.authManager.token}`
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                console.log(`✅ [BALANCE_RECONCILE] Balance reconciled: ${data.previousBalance} → ${data.newBalance}`);
+
+                // Update local balance if it changed
+                if (data.newBalance !== this.gameBalance) {
+                    this.gameBalance = data.newBalance;
+
+                    // Update game instance
+                    if (window.gameInstance) {
+                        window.gameInstance.tokens = this.gameBalance;
+                        window.gameInstance.updateDisplay();
+                    }
+
+                    // Update UI
+                    this.updateWalletUI();
+
+                    // Show notification if balance changed
+                    if (data.previousBalance !== data.newBalance) {
+                        const difference = data.newBalance - data.previousBalance;
+                        const sign = difference > 0 ? '+' : '';
+                        this.showSuccess(`Balance updated: ${sign}${difference} tokens from recent transactions.`);
+                    }
+                }
+            } else {
+                console.log(`❌ [BALANCE_RECONCILE] Failed: ${response.status}`);
+            }
+        } catch (error) {
+            console.error('Balance reconciliation error:', error);
         }
     }
 
