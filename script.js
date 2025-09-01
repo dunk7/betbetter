@@ -5,9 +5,10 @@ class BetBetterGame {
         this.wins = 0;
         this.betHistory = [];
         this.multiplier = 2; // Fixed 2x multiplier
-        this.winChance = 0.50001; // Always 50.001% for the simple dice roll
+        this.winChance = 0.50001; // Server-side: 50.001% user advantage
         this.isRolling = false;
         this.dice3D = null;
+        this.firstBetCompleted = false; // Track if first bet is done
 
         this.initializeElements();
         this.attachEventListeners();
@@ -55,12 +56,13 @@ class BetBetterGame {
             return;
         }
 
-        // Determine outcome first (but don't show it yet)
-        this.gamesPlayed++;
-        const won = this.determineOutcome();
-        this.outcomeResult = { won, betAmount };
+        // Check if user is authenticated for server-side betting
+        if (!window.authManager?.isAuthenticated) {
+            this.showResult('Please login to place bets!', 'error');
+            return;
+        }
 
-        // Start rolling
+        // Start rolling animation first
         this.isRolling = true;
         this.placeBet.disabled = true;
         this.placeBet.textContent = 'ROLLING...';
@@ -70,74 +72,114 @@ class BetBetterGame {
             this.dice3D.roll();
         } else {
             // Fallback if 3D dice isn't ready
-            setTimeout(() => this.onRollComplete(), 2000);
+            setTimeout(() => this.placeServerBet(betAmount), 2000);
+        }
+    }
+
+    async placeServerBet(betAmount) {
+        try {
+            console.log(`🎲 [CLIENT_BET] Placing server-side bet: ${betAmount}`);
+
+            // Add timeout to prevent hanging requests
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+            const response = await fetch('http://localhost:5000/api/game/place-bet', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${window.authManager.token}`
+                },
+                body: JSON.stringify({
+                    betAmount: betAmount
+                }),
+                signal: controller.signal
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Bet failed');
+            }
+
+            const betResult = await response.json();
+            console.log(`🎲 [CLIENT_BET] Server response:`, betResult);
+
+            // Update local state with server result
+            this.gamesPlayed++;
+            if (betResult.playerWins) {
+                this.wins++;
+            }
+
+            // Update tokens from server
+            this.tokens = this.fixPrecision(betResult.newBalance);
+
+            // Update Solana manager balance
+            if (window.solanaManager) {
+                window.solanaManager.gameBalance = this.tokens;
+            }
+
+            // Hide server security badge after first bet
+            if (!this.firstBetCompleted) {
+                this.firstBetCompleted = true;
+                const securityBadge = document.getElementById('server-security-badge');
+                if (securityBadge) {
+                    securityBadge.style.display = 'none';
+                }
+            }
+
+            // Store outcome for display
+            this.outcomeResult = {
+                won: betResult.playerWins,
+                betAmount: betAmount,
+                randomNumber: betResult.randomNumber,
+                serverResult: betResult
+            };
+
+            // Show result after animation completes
+            this.showBetResult();
+
+        } catch (error) {
+            console.error('Server bet error:', error);
+
+            // Handle different types of errors
+            let errorMessage = 'Bet failed';
+            if (error.name === 'AbortError') {
+                errorMessage = 'Bet request timed out. Please try again.';
+            } else if (error.message) {
+                errorMessage = error.message;
+            }
+
+            this.showResult(`Bet failed: ${errorMessage}`, 'error');
+
+            // Re-enable button on error
+            this.isRolling = false;
+            this.placeBet.disabled = false;
+            this.placeBet.textContent = 'PLACE BET';
         }
     }
 
     async onRollComplete() {
-        const { won, betAmount } = this.outcomeResult;
+        // For 3D dice animation, call server bet after animation starts
+        const betAmount = parseFloat(this.betAmount.value);
+        if (this.dice3D && betAmount > 0) {
+            await this.placeServerBet(betAmount);
+        }
+    }
+
+    showBetResult() {
+        const { won, betAmount, randomNumber } = this.outcomeResult;
 
         // Calculate net amount with precision fixing
         const netAmount = this.fixPrecision(won ? betAmount : -betAmount);
 
-        // Update backend with game result
-        if (window.authManager?.isAuthenticated) {
-            try {
-                const response = await fetch('http://localhost:5000/api/game/update-balance', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${window.authManager.token}`
-                    },
-                    body: JSON.stringify({
-                        amount: netAmount,
-                        type: won ? 'win' : 'loss'
-                    })
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    this.tokens = this.fixPrecision(data.newBalance);
-
-                    // Update Solana manager balance
-                    if (window.solanaManager) {
-                        window.solanaManager.gameBalance = this.tokens;
-                    }
-                } else {
-                    console.error('Failed to update backend balance');
-                    // Fallback to local calculation
-                    if (won) {
-                        this.tokens = this.fixPrecision(this.tokens + betAmount);
-                        this.wins++;
-                    } else {
-                        this.tokens = this.fixPrecision(this.tokens - betAmount);
-                    }
-                }
-            } catch (error) {
-                console.error('Backend update error:', error);
-                // Fallback to local calculation
-                if (won) {
-                    this.tokens = this.fixPrecision(this.tokens + betAmount);
-                    this.wins++;
-                } else {
-                    this.tokens = this.fixPrecision(this.tokens - betAmount);
-                }
-            }
-        } else {
-            // Not authenticated, use local calculation
-            if (won) {
-                this.tokens = this.fixPrecision(this.tokens + betAmount);
-                this.wins++;
-            } else {
-                this.tokens = this.fixPrecision(this.tokens - betAmount);
-            }
-        }
-
-        // Show result
+        // Show result with random number for transparency
+        const randomDisplay = randomNumber ? ` (Random: ${(randomNumber * 100).toFixed(5)}%)` : '';
         if (won) {
-            this.showResult(`WIN! +${betAmount}`, 'win');
+            this.showResult(`WIN! +${betAmount}${randomDisplay}`, 'win');
         } else {
-            this.showResult(`LOSE! -${betAmount}`, 'lose');
+            this.showResult(`LOSE! -${betAmount}${randomDisplay}`, 'lose');
         }
 
         this.addToHistory(netAmount, won);
@@ -212,12 +254,11 @@ class BetBetterGame {
         return true;
     }
 
+    // DEPRECATED: Client-side randomness removed for security
+    // Server now handles all betting with cryptographically secure randomness
     determineOutcome() {
-        // Generate a random number between 0 and 1
-        const random = Math.random();
-
-        // Player wins if random number is less than 50.001% (slight advantage)
-        return random < 0.50001;
+        console.warn('Client-side determineOutcome() is deprecated. Using server-side betting instead.');
+        return false; // This should never be called in production
     }
 
     showResult(message, type) {

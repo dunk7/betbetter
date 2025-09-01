@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const { OAuth2Client } = require('google-auth-library');
 const { Connection, PublicKey, LAMPORTS_PER_SOL, Keypair, Transaction, SystemProgram, sendAndConfirmTransaction } = require('@solana/web3.js');
 const { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, createTransferInstruction } = require('@solana/spl-token');
@@ -14,6 +15,7 @@ const PORT = process.env.PORT || 5000;
 
 // USDC Constants
 const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+console.log('🔧 [INIT] USDC Mint address:', USDC_MINT.toString());
 
 // Treasury Wallet Setup (you'll need to provide these)
 const TREASURY_KEYPAIR_PATH = process.env.TREASURY_KEYPAIR_PATH || './casino-treasury-keypair.json'; // Path to keypair JSON file
@@ -227,8 +229,20 @@ async function transferUSDC(connection, from, to, amount, signer) {
 
         console.log(`   ✅ Transfer instruction created successfully`);
 
-        // Create transaction
-        const transaction = new Transaction().add(transferInstruction);
+        // Add compute budget instructions for lower fees (same as withdrawals)
+        const { ComputeBudgetProgram } = require('@solana/web3.js');
+        const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+            units: 200_000 // Standard limit for token transfers
+        });
+        const priorityFeeIx = ComputeBudgetProgram.setComputeUnitPrice({
+            microLamports: 1_000 // Very low priority fee (0.001 lamports per compute unit)
+        });
+
+        // Create transaction with compute budget instructions
+        const transaction = new Transaction()
+            .add(computeBudgetIx)
+            .add(priorityFeeIx)
+            .add(transferInstruction);
 
         // Get recent blockhash
         const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
@@ -306,7 +320,7 @@ const authenticateToken = (req, res, next) => {
 
     if (!token) return res.status(401).json({ error: 'Access token required' });
 
-    jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err, user) => {
+    jwt.verify(token, process.env.JWT_SECRET || 'CHANGE_THIS_JWT_SECRET_IN_PRODUCTION', (err, user) => {
         if (err) return res.status(403).json({ error: 'Invalid token' });
         req.user = user;
         next();
@@ -346,7 +360,7 @@ app.post('/api/auth/google', async (req, res) => {
         // Create JWT token
         const jwtToken = jwt.sign(
             { userId: user._id, googleId: user.googleId },
-            process.env.JWT_SECRET || 'your-secret-key',
+            process.env.JWT_SECRET || 'CHANGE_THIS_JWT_SECRET_IN_PRODUCTION',
             { expiresIn: '7d' }
         );
 
@@ -579,8 +593,8 @@ app.post('/api/deposit', authenticateToken, async (req, res) => {
             console.log(`🆕 [DEPOSIT] First deposit - setting verified wallet address for user ${user.email}: ${senderAddress}`);
         }
 
-        // Apply 1 cent (0.01 USDC) fee for transaction costs
-        const DEPOSIT_FEE = 0.01;
+        // Apply 5 cent (0.05 USDC) fee for transaction costs
+        const DEPOSIT_FEE = 0.05;
         const usdcAfterFee = Math.max(0, usdcTransferred - DEPOSIT_FEE);
         const feeAmount = usdcTransferred - usdcAfterFee;
         console.log(`💰 [DEPOSIT] Fee calculation: ${usdcTransferred} USDC - ${DEPOSIT_FEE} fee = ${usdcAfterFee} USDC usable`);
@@ -798,31 +812,265 @@ app.get('/api/treasury-balance', authenticateToken, async (req, res) => {
     }
 });
 
-// Scan blockchain for new deposits from verified users
+
+
+// Auto-scan for deposits every 2 minutes (balance speed vs rate limits)
+setInterval(scanForNewDeposits, 120000);
+
+// Manual trigger for deposit scanning (for frontend)
+app.post('/api/admin/trigger-deposit-scan', async (req, res) => {
+    try {
+        console.log('🔍 [MANUAL SCAN] Manual deposit scan triggered');
+        const result = await scanForNewDeposits();
+        res.json({
+            message: 'Deposit scan completed',
+            success: true,
+            scannedTransactions: result?.processedCount || 0
+        });
+    } catch (error) {
+        console.error('Manual scan error:', error);
+        res.status(500).json({
+            error: 'Scan failed',
+            details: error.message
+        });
+    }
+});
+
+// Check for very recent deposits (last 5 minutes)
+app.post('/api/admin/check-recent-deposits', async (req, res) => {
+    try {
+        console.log('🔍 [RECENT SCAN] Checking for deposits in last 5 minutes...');
+
+        if (!treasuryKeypair) {
+            return res.status(500).json({ error: 'Treasury not configured' });
+        }
+
+        const treasuryAddress = treasuryKeypair.publicKey.toString();
+
+        // Get the treasury's USDC token account address
+        const treasuryUsdcAccount = await solanaConnection.getTokenAccountsByOwner(
+            treasuryKeypair.publicKey,
+            { mint: USDC_MINT }
+        );
+
+        if (!treasuryUsdcAccount.value || treasuryUsdcAccount.value.length === 0) {
+            console.log('⚠️ [RECENT SCAN] No USDC token account found for treasury');
+            return res.status(500).json({ error: 'No USDC token account' });
+        }
+
+        const usdcTokenAccount = treasuryUsdcAccount.value[0].pubkey;
+        console.log(`🔍 [RECENT SCAN] Treasury USDC token account: ${usdcTokenAccount.toString()}`);
+
+        // Get more recent transactions for the USDC token account
+        const signatures = await solanaConnection.getSignaturesForAddress(
+            usdcTokenAccount,
+            {
+                limit: 20 // Check last 20 transactions to catch very recent ones
+            }
+        );
+
+        console.log(`📊 [RECENT SCAN] Found ${signatures.length} transactions to check`);
+
+        const fiveMinutesAgo = Date.now() - (30 * 60 * 1000); // 30 minutes ago (increased time window)
+        let recentDeposits = [];
+        let processedCount = 0;
+
+        // Check each transaction
+        for (let i = 0; i < Math.min(signatures.length, 10); i++) { // Check first 10 most recent
+            const sigInfo = signatures[i];
+
+            try {
+                // Skip if already processed
+                const existingTransaction = await GameTransaction.findOne({
+                    solanaTxHash: sigInfo.signature
+                });
+
+                if (existingTransaction) {
+                    continue;
+                }
+
+                // Check if transaction is recent (within last 5 minutes)
+                const txTime = sigInfo.blockTime * 1000; // Convert to milliseconds
+                if (txTime < fiveMinutesAgo) {
+                    console.log(`⏰ [RECENT SCAN] Transaction ${sigInfo.signature} is too old (${new Date(txTime).toISOString()})`);
+                    continue;
+                }
+
+                console.log(`🔍 [RECENT SCAN] Analyzing recent transaction: ${sigInfo.signature} (${new Date(txTime).toISOString()})`);
+
+                // Add delay to avoid rate limits
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                // Get transaction details
+                const transaction = await solanaConnection.getParsedTransaction(
+                    sigInfo.signature,
+                    {
+                        commitment: 'confirmed',
+                        maxSupportedTransactionVersion: 0
+                    }
+                );
+
+                if (!transaction) {
+                    console.log(`❌ [RECENT SCAN] Could not fetch transaction details: ${sigInfo.signature}`);
+                    continue;
+                }
+
+                // Analyze token balances
+                if (transaction.meta?.preTokenBalances && transaction.meta?.postTokenBalances) {
+                    let usdcTransferred = 0;
+                    let senderAddress = null;
+
+                    for (let j = 0; j < transaction.meta.preTokenBalances.length; j++) {
+                        const preBalance = transaction.meta.preTokenBalances[j];
+                        const postBalance = transaction.meta.postTokenBalances[j];
+
+                        if (preBalance.mint === USDC_MINT.toString()) {
+                            const preAmount = preBalance.uiTokenAmount.uiAmount || 0;
+                            const postAmount = postBalance.uiTokenAmount.uiAmount || 0;
+                            const change = postAmount - preAmount;
+
+                            if (preAmount > postAmount) {
+                                senderAddress = preBalance.owner;
+                                usdcTransferred = preAmount - postAmount;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (usdcTransferred > 0 && senderAddress) {
+                        console.log(`💰 [RECENT SCAN] Found recent USDC deposit: ${usdcTransferred} USDC from ${senderAddress}`);
+
+                        // Check if this sender has a verified account
+                        console.log(`🔍 [RECENT SCAN] Checking if sender ${senderAddress} has verified account`);
+                        const user = await User.findOne({ solanaAddress: senderAddress });
+
+                        if (user) {
+                            console.log(`✅ [RECENT SCAN] Found verified user: ${user.email}`);
+
+                            // Apply 1 cent fee
+                            const DEPOSIT_FEE = 0.05;
+                            const usdcAfterFee = Math.max(0, usdcTransferred - DEPOSIT_FEE);
+                            const gameTokens = usdcAfterFee;
+
+                            // Update user balance
+                            const oldBalance = user.gameBalance;
+                            user.gameBalance += gameTokens;
+                            await user.save();
+
+                            // Create transaction record
+                            const dbTransaction = new GameTransaction({
+                                userId: user._id,
+                                type: 'deposit',
+                                amount: gameTokens,
+                                solAmount: usdcTransferred,
+                                tokenAmount: gameTokens,
+                                solanaTxHash: sigInfo.signature,
+                                fromAddress: senderAddress,
+                                toAddress: treasuryAddress,
+                                status: 'completed'
+                            });
+                            await dbTransaction.save();
+
+                            console.log(`🎉 [RECENT SCAN] Auto-processed recent deposit: ${usdcTransferred} USDC → ${gameTokens} tokens for ${user.email}`);
+
+                            recentDeposits.push({
+                                signature: sigInfo.signature,
+                                amount: usdcTransferred,
+                                tokens: gameTokens,
+                                user: user.email,
+                                time: new Date(txTime).toISOString()
+                            });
+
+                            processedCount++;
+                        }
+                    }
+                }
+
+            } catch (error) {
+                console.error(`❌ [RECENT SCAN] Error processing transaction ${sigInfo.signature}:`, error.message);
+            }
+        }
+
+        console.log(`✅ [RECENT SCAN] Recent scan complete. Processed ${processedCount} deposits.`);
+
+        res.json({
+            message: 'Recent deposit scan completed',
+            success: true,
+            scannedTransactions: Math.min(signatures.length, 10),
+            processedDeposits: processedCount,
+            recentDeposits: recentDeposits
+        });
+
+    } catch (error) {
+        console.error('❌ [RECENT SCAN] Error:', error);
+        res.status(500).json({
+            error: 'Recent scan failed',
+            details: error.message
+        });
+    }
+});
+
+// Return scan result
 async function scanForNewDeposits() {
     try {
         console.log('🔍 [DEPOSIT SCAN] Starting blockchain scan for new deposits...');
 
         if (!treasuryKeypair) {
             console.log('❌ [DEPOSIT SCAN] Treasury wallet not configured');
-            return;
+            console.log('Available env vars:', Object.keys(process.env));
+            return { processedCount: 0, error: 'Treasury not configured' };
         }
 
         const treasuryAddress = treasuryKeypair.publicKey.toString();
-        console.log(`🔍 [DEPOSIT SCAN] Scanning transactions to treasury: ${treasuryAddress}`);
+        console.log(`🔍 [DEPOSIT SCAN] Treasury address: ${treasuryAddress}`);
+        console.log(`🔍 [DEPOSIT SCAN] USDC Mint: ${USDC_MINT.toString()}`);
 
-        // Get recent confirmed signatures for the treasury address
-        const signatures = await solanaConnection.getConfirmedSignaturesForAddress(
+        // Get the treasury's USDC token account address
+        const treasuryUsdcAccount = await solanaConnection.getTokenAccountsByOwner(
             treasuryKeypair.publicKey,
-            { limit: 50 }, // Check last 50 transactions
-            'confirmed'
+            { mint: USDC_MINT }
+        );
+
+        if (!treasuryUsdcAccount.value || treasuryUsdcAccount.value.length === 0) {
+            console.log('⚠️ [DEPOSIT SCAN] No USDC token account found for treasury');
+            return { processedCount: 0, error: 'No USDC token account' };
+        }
+
+        const usdcTokenAccount = treasuryUsdcAccount.value[0].pubkey;
+        console.log(`🔍 [DEPOSIT SCAN] Treasury USDC token account: ${usdcTokenAccount.toString()}`);
+
+        // Get recent confirmed signatures for the USDC token account (not the owner)
+        const signatures = await solanaConnection.getSignaturesForAddress(
+            usdcTokenAccount,
+            {
+                limit: 10 // Check last 10 transactions
+            }
         );
 
         console.log(`📊 [DEPOSIT SCAN] Found ${signatures.length} recent transactions`);
 
+        if (signatures.length === 0) {
+            console.log('⚠️ [DEPOSIT SCAN] No recent transactions found for treasury address');
+            console.log('💡 [DEPOSIT SCAN] This might mean the treasury address has no recent activity');
+            return { processedCount: 0, error: 'No transactions found' };
+        }
+
+        // Log some transaction details for debugging
+        console.log('📋 [DEPOSIT SCAN] Recent transaction signatures:');
+        signatures.slice(0, 3).forEach((sig, index) => {
+            console.log(`  ${index + 1}. ${sig.signature} (slot: ${sig.slot}, err: ${sig.err ? 'YES' : 'NO'})`);
+        });
+
         let processedCount = 0;
 
-        for (const sigInfo of signatures) {
+        // Process transactions one at a time with delays to avoid rate limits
+        for (let i = 0; i < Math.min(signatures.length, 5); i++) { // Process max 5 at a time
+            const sigInfo = signatures[i];
+
+            // Add delay between requests to avoid rate limits
+            if (i > 0) {
+                await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+            }
             try {
                 // Check if this transaction was already processed
                 const existingTransaction = await GameTransaction.findOne({
@@ -834,6 +1082,9 @@ async function scanForNewDeposits() {
                 }
 
                 console.log(`🔍 [DEPOSIT SCAN] Analyzing new transaction: ${sigInfo.signature}`);
+
+                // Add small delay before fetching transaction details
+                await new Promise(resolve => setTimeout(resolve, 500));
 
                 // Get transaction details
                 const transaction = await solanaConnection.getParsedTransaction(
@@ -873,7 +1124,7 @@ async function scanForNewDeposits() {
                     }
 
                     if (usdcTransferred > 0 && senderAddress) {
-                        console.log(`💰 [DEPOSIT SCAN] Found USDC deposit: ${usdcTransferred} from ${senderAddress}`);
+                        console.log(`💰 [DEPOSIT SCAN] Found USDC deposit: ${usdcTransferred} USDC from ${senderAddress}`);
 
                         // Check if this sender has a verified account
                         const user = await User.findOne({ solanaAddress: senderAddress });
@@ -882,7 +1133,7 @@ async function scanForNewDeposits() {
                             console.log(`✅ [DEPOSIT SCAN] Processing auto-deposit for user: ${user.email}`);
 
                             // Apply 1 cent fee
-                            const DEPOSIT_FEE = 0.01;
+                            const DEPOSIT_FEE = 0.05;
                             const usdcAfterFee = Math.max(0, usdcTransferred - DEPOSIT_FEE);
                             const gameTokens = usdcAfterFee;
 
@@ -907,6 +1158,8 @@ async function scanForNewDeposits() {
 
                             console.log(`🎉 [DEPOSIT SCAN] Auto-processed deposit: ${usdcTransferred} USDC → ${gameTokens} tokens for ${user.email}`);
                             processedCount++;
+                        } else {
+                            console.log(`❌ [DEPOSIT SCAN] No verified user found for address: ${senderAddress}`);
                         }
                     }
                 }
@@ -918,23 +1171,219 @@ async function scanForNewDeposits() {
 
         console.log(`✅ [DEPOSIT SCAN] Scan complete. Processed ${processedCount} new deposits.`);
 
+        return { processedCount, success: true };
+
     } catch (error) {
         console.error('❌ [DEPOSIT SCAN] Blockchain scan error:', error);
+        return { processedCount: 0, error: error.message };
     }
 }
 
-// Auto-scan for deposits every 30 seconds
-setInterval(scanForNewDeposits, 30000);
+// Debug endpoint to check treasury status
+app.get('/api/debug/treasury', (req, res) => {
+    const status = {
+        treasuryLoaded: treasuryKeypair !== null,
+        treasuryAddress: treasuryKeypair ? treasuryKeypair.publicKey.toString() : null,
+        usdcMint: USDC_MINT.toString(),
+        serverTime: new Date().toISOString()
+    };
+    console.log('🔧 [DEBUG] Treasury status:', status);
+    res.json(status);
+});
 
-// Manual trigger for deposit scanning (for frontend)
-app.post('/api/admin/trigger-deposit-scan', async (req, res) => {
+// Test credit endpoint (no auth for testing)
+app.post('/api/test/credit-deposit', async (req, res) => {
     try {
-        console.log('🔍 [MANUAL SCAN] Manual deposit scan triggered');
-        await scanForNewDeposits();
-        res.json({ message: 'Deposit scan completed', success: true });
+        const walletAddress = 'Eya7P6FAqibqRFA9weBkNX1DRWVyv89XeQxDuWwEu3Ex';
+        const amount = 10;
+        const transactionSignature = '4dQMHT2qPVsbSqd2cwHcAHYXMg5g7phKcCkJ2dZJZuUYYkq83FhveW4tSwa4rL2dwsecpDZ7946VYza2GYMcBmsC';
+
+        console.log(`💰 [TEST CREDIT] Crediting ${amount} USDC for wallet: ${walletAddress}`);
+
+        // Check if user exists, create if not
+        let user = await User.findOne({ solanaAddress: walletAddress });
+
+        if (!user) {
+            console.log(`🆕 [TEST CREDIT] Creating new user for wallet: ${walletAddress}`);
+            user = new User({
+                googleId: `test_${Date.now()}`,
+                email: `test_wallet_${walletAddress.slice(0, 8)}@betbetter.test`,
+                name: `Test User ${walletAddress.slice(0, 8)}`,
+                solanaAddress: walletAddress,
+                gameBalance: 0
+            });
+            await user.save();
+        }
+
+        // Apply 1 cent fee
+        const DEPOSIT_FEE = 0.05;
+        const usdcAfterFee = Math.max(0, amount - DEPOSIT_FEE);
+        const gameTokens = usdcAfterFee;
+
+        // Update user balance
+        const oldBalance = user.gameBalance;
+        user.gameBalance += gameTokens;
+        await user.save();
+
+        // Create transaction record
+        const dbTransaction = new GameTransaction({
+            userId: user._id,
+            type: 'deposit',
+            amount: gameTokens,
+            solAmount: amount,
+            tokenAmount: gameTokens,
+            solanaTxHash: transactionSignature,
+            fromAddress: walletAddress,
+            toAddress: treasuryKeypair.publicKey.toString(),
+            status: 'completed'
+        });
+        await dbTransaction.save();
+
+        console.log(`✅ [TEST CREDIT] Credited ${gameTokens} tokens to user ${user.email} (${oldBalance} → ${user.gameBalance})`);
+
+        res.json({
+            success: true,
+            message: `Credited ${gameTokens} tokens to ${user.email}`,
+            userId: user._id,
+            oldBalance,
+            newBalance: user.gameBalance,
+            tokensCredited: gameTokens,
+            walletAddress,
+            transactionSignature
+        });
+
     } catch (error) {
-        console.error('Manual scan error:', error);
-        res.status(500).json({ error: 'Scan failed' });
+        console.error('Test credit error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Manual credit endpoint for found deposits (temporary - no auth for testing)
+app.post('/api/admin/credit-deposit', async (req, res) => {
+    try {
+        const { walletAddress, amount, transactionSignature } = req.body;
+
+        if (!walletAddress || !amount || amount <= 0) {
+            return res.status(400).json({ error: 'Wallet address and amount required' });
+        }
+
+        console.log(`💰 [MANUAL CREDIT] Crediting ${amount} USDC for wallet: ${walletAddress}`);
+
+        // Check if user exists, create if not
+        let user = await User.findOne({ solanaAddress: walletAddress });
+
+        if (!user) {
+            console.log(`🆕 [MANUAL CREDIT] Creating new user for wallet: ${walletAddress}`);
+            user = new User({
+                googleId: `manual_${Date.now()}`, // Temporary ID
+                email: `wallet_${walletAddress.slice(0, 8)}@temp.betbetter`,
+                name: `Wallet User ${walletAddress.slice(0, 8)}`,
+                solanaAddress: walletAddress,
+                gameBalance: 0
+            });
+            await user.save();
+        }
+
+        // Apply 1 cent fee
+        const DEPOSIT_FEE = 0.05;
+        const usdcAfterFee = Math.max(0, amount - DEPOSIT_FEE);
+        const gameTokens = usdcAfterFee;
+
+        // Update user balance
+        const oldBalance = user.gameBalance;
+        user.gameBalance += gameTokens;
+        await user.save();
+
+        // Create transaction record
+        const dbTransaction = new GameTransaction({
+            userId: user._id,
+            type: 'deposit',
+            amount: gameTokens,
+            solAmount: amount,
+            tokenAmount: gameTokens,
+            solanaTxHash: transactionSignature || 'manual_credit',
+            fromAddress: walletAddress,
+            toAddress: treasuryKeypair.publicKey.toString(),
+            status: 'completed'
+        });
+        await dbTransaction.save();
+
+        console.log(`✅ [MANUAL CREDIT] Credited ${gameTokens} tokens to user ${user.email} (${oldBalance} → ${user.gameBalance})`);
+
+        res.json({
+            success: true,
+            message: `Credited ${gameTokens} tokens to ${user.email}`,
+            userId: user._id,
+            oldBalance,
+            newBalance: user.gameBalance,
+            tokensCredited: gameTokens
+        });
+
+    } catch (error) {
+        console.error('Manual credit error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Debug endpoint to test transaction analysis
+app.post('/api/debug/analyze-transaction', async (req, res) => {
+    try {
+        const { signature } = req.body;
+
+        if (!signature) {
+            return res.status(400).json({ error: 'Transaction signature required' });
+        }
+
+        console.log(`🔍 [DEBUG] Analyzing transaction: ${signature}`);
+
+        // Get transaction details
+        const transaction = await solanaConnection.getParsedTransaction(
+            signature,
+            {
+                commitment: 'confirmed',
+                maxSupportedTransactionVersion: 0
+            }
+        );
+
+        if (!transaction) {
+            return res.status(404).json({ error: 'Transaction not found' });
+        }
+
+        const analysis = {
+            signature,
+            slot: transaction.slot,
+            success: !transaction.meta?.err,
+            fee: transaction.meta?.fee,
+            hasTokenBalances: !!(transaction.meta?.preTokenBalances && transaction.meta?.postTokenBalances)
+        };
+
+        if (analysis.hasTokenBalances) {
+            analysis.tokenChanges = [];
+            for (let i = 0; i < transaction.meta.preTokenBalances.length; i++) {
+                const preBalance = transaction.meta.preTokenBalances[i];
+                const postBalance = transaction.meta.postTokenBalances[i];
+
+                if (preBalance.mint === USDC_MINT.toString()) {
+                    const preAmount = preBalance.uiTokenAmount.uiAmount || 0;
+                    const postAmount = postBalance.uiTokenAmount.uiAmount || 0;
+                    const change = postAmount - preAmount;
+
+                    analysis.tokenChanges.push({
+                        owner: preBalance.owner,
+                        change,
+                        isDeposit: change > 0,
+                        amount: Math.abs(change)
+                    });
+                }
+            }
+        }
+
+        console.log(`✅ [DEBUG] Transaction analysis:`, analysis);
+        res.json(analysis);
+
+    } catch (error) {
+        console.error('Debug transaction analysis error:', error);
+        res.status(500).json({ error: error.message });
     }
 });
 
@@ -1079,8 +1528,8 @@ app.post('/api/deposit', authenticateToken, async (req, res) => {
             console.log(`🆕 [DEPOSIT] First deposit - setting verified wallet address for user ${user.email}: ${senderAddress}`);
         }
 
-        // Apply 1 cent (0.01 USDC) fee for transaction costs
-        const DEPOSIT_FEE = 0.01;
+        // Apply 5 cent (0.05 USDC) fee for transaction costs
+        const DEPOSIT_FEE = 0.05;
         const usdcAfterFee = Math.max(0, usdcTransferred - DEPOSIT_FEE);
         const feeAmount = usdcTransferred - usdcAfterFee;
         console.log(`💰 [DEPOSIT] Fee calculation: ${usdcTransferred} USDC - ${DEPOSIT_FEE} fee = ${usdcAfterFee} USDC usable`);
@@ -1267,7 +1716,105 @@ app.post('/api/user/reconcile-balance', authenticateToken, async (req, res) => {
     }
 });
 
-// Update game balance (for bets)
+// Secure server-side betting endpoint
+app.post('/api/game/place-bet', authenticateToken, async (req, res) => {
+    try {
+        const { betAmount } = req.body;
+
+        console.log(`🎲 [SERVER_BET] User ${req.user.userId} placing bet: ${betAmount}`);
+
+        // Validate bet amount
+        if (!betAmount || typeof betAmount !== 'number' || betAmount <= 0 || betAmount > 1000000) {
+            console.log(`❌ [SERVER_BET] Invalid bet amount: ${betAmount}`);
+            return res.status(400).json({ error: 'Invalid bet amount. Must be between 0.01 and 1,000,000' });
+        }
+
+        // Validate bet amount precision (max 2 decimal places)
+        if (betAmount !== Math.round(betAmount * 100) / 100) {
+            console.log(`❌ [SERVER_BET] Invalid bet precision: ${betAmount}`);
+            return res.status(400).json({ error: 'Bet amount can have at most 2 decimal places' });
+        }
+
+        const user = await User.findById(req.user.userId);
+        if (!user) {
+            console.log(`❌ [SERVER_BET] User not found: ${req.user.userId}`);
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Check if user has enough balance
+        if (user.gameBalance < betAmount) {
+            console.log(`❌ [SERVER_BET] Insufficient balance: ${user.gameBalance} < ${betAmount}`);
+            return res.status(400).json({ error: 'Insufficient balance' });
+        }
+
+        // Rate limiting: Check recent bets to prevent spam
+        const recentBets = await GameTransaction.find({
+            userId: req.user.userId,
+            type: { $in: ['bet_win', 'bet_loss'] },
+            timestamp: { $gte: new Date(Date.now() - 1000) } // Last second
+        });
+
+        if (recentBets.length >= 5) {
+            console.log(`❌ [SERVER_BET] Rate limit exceeded for user ${req.user.userId}`);
+            return res.status(429).json({ error: 'Too many bets. Please wait a moment.' });
+        }
+
+        // Generate cryptographically secure random outcome
+        // Use 50.001% USER advantage (player wins if random < 0.50001)
+        const randomBytes = crypto.randomBytes(4);
+        const randomNumber = randomBytes.readUInt32LE(0) / 0xFFFFFFFF; // Convert to 0-1 range
+
+        console.log(`🎲 [SERVER_BET] Generated random number: ${randomNumber}`);
+
+        // Player wins if random < 0.50001 (50.001% chance to win - user advantage)
+        const playerWins = randomNumber < 0.50001;
+
+        console.log(`🎲 [SERVER_BET] Player ${playerWins ? 'WINS' : 'LOSES'} (threshold: 0.50001)`);
+
+        // Calculate net amount
+        const netAmount = playerWins ? betAmount : -betAmount;
+
+        // Update user balance
+        const oldBalance = user.gameBalance;
+        user.gameBalance += netAmount;
+        await user.save();
+
+        console.log(`💰 [SERVER_BET] Balance update: ${oldBalance} → ${user.gameBalance}`);
+
+        // Create transaction record
+        const transaction = new GameTransaction({
+            userId: user._id,
+            type: playerWins ? 'bet_win' : 'bet_loss',
+            amount: betAmount,
+            tokenAmount: betAmount,
+            status: 'completed'
+        });
+        await transaction.save();
+
+        console.log(`✅ [SERVER_BET] Bet completed. User ${playerWins ? 'won' : 'lost'} ${betAmount} tokens`);
+
+        // Return result to client with full transparency data
+        res.json({
+            success: true,
+            playerWins,
+            betAmount,
+            netAmount,
+            newBalance: user.gameBalance,
+            randomNumber, // Cryptographically secure random number (0-1)
+            winThreshold: 0.50001, // User advantage threshold
+            userAdvantage: 0.00001, // 0.001% user advantage
+            transactionId: transaction._id,
+            timestamp: new Date().toISOString(),
+            serverVersion: 'secure-v1' // For version tracking
+        });
+
+    } catch (error) {
+        console.error('Server betting error:', error);
+        res.status(500).json({ error: 'Betting failed' });
+    }
+});
+
+// Legacy balance update endpoint (for backward compatibility)
 app.post('/api/game/update-balance', authenticateToken, async (req, res) => {
     try {
         const { amount, type } = req.body; // amount can be positive (win) or negative (loss)
@@ -1305,6 +1852,20 @@ app.post('/api/game/update-balance', authenticateToken, async (req, res) => {
 });
 
 
+
+// Get betting configuration (for transparency)
+app.get('/api/game/config', (req, res) => {
+    res.json({
+        winThreshold: 0.50001, // 50.001% chance to win
+        userAdvantage: 0.00001, // 0.001% user advantage
+        maxBetAmount: 1000000,
+        minBetAmount: 0.01,
+        serverVersion: 'secure-v1',
+        randomness: 'cryptographically_secure',
+        rateLimitPerSecond: 5,
+        description: 'Server-side secure betting with slight user advantage'
+    });
+});
 
 // Health check
 app.get('/api/health', (req, res) => {

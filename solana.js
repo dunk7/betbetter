@@ -101,58 +101,44 @@ class SolanaManager {
         if (hasVerifiedWallet) {
             // Instructions for verified users
             instructions = `
-🔄 AUTOMATIC DEPOSIT DETECTION 🔄
+🎯 QUICK DEPOSIT PROCESS
 
-Your wallet is already verified! The system automatically scans the blockchain for your deposits.
+Your wallet is verified! Send USDC and we'll handle the rest automatically.
 
-📋 How it works:
-1. Send USDC from your verified wallet to: ${this.treasuryAddress}
-2. The system automatically detects your transaction (every 30 seconds)
-3. Your tokens are credited instantly - no manual action needed!
-4. Click "Auto Update Balance" anytime to force an immediate scan
-
-🎯 Benefits:
-• ⚡ Instant automatic processing
-• 🔒 Blockchain-verified security
-• 📊 Real-time balance updates
-• 💰 No more waiting or manual verification
+📋 How to deposit:
+1. Send USDC to: ${this.treasuryAddress}
+2. Click "Update Balance" to refresh your tokens
+3. Done! Your tokens appear instantly
 
 ⚠️  Important:
-• Send from your verified wallet address: ${this.userWalletAddress.slice(0, 8)}...${this.userWalletAddress.slice(-8)}
-• 1¢ fee still applies for transaction costs
-• Minimum deposit: 0.02 USDC
+• Send from your verified wallet: ${this.userWalletAddress.slice(0, 8)}...${this.userWalletAddress.slice(-8)}
+• 5¢ fee applies to all deposits
+• Minimum deposit: 0.06 USDC
 • Use any Solana wallet (Phantom, Solflare, etc.)
 
-💡 The blockchain scanner runs continuously - your deposits are processed automatically!
+💡 Deposits are processed automatically - just send and update!
             `;
         } else {
             // Instructions for new users
             instructions = `
 🛡️ FIRST DEPOSIT - WALLET VERIFICATION 🛡️
 
-To deposit USDC and get game tokens:
+To get started with game tokens:
 
 1. Copy the treasury address: ${this.treasuryAddress}
 2. Send USDC from your wallet to this address
-3. Use any Solana wallet (Phantom, Solflare, etc.)
-4. Exchange Rate: 1 USDC = 1 token (minus 1¢ fee)
-
-🔐 Security Features:
-• Your wallet address will be verified and stored
-• Future deposits use automatic updates (no more signatures!)
-• Transaction signatures prevent double-processing
-• Only you can withdraw to your verified address
+3. Paste the transaction signature below
+4. Click "Verify Deposit" to complete setup
 
 ⚠️  Important:
 • Send USDC (not SOL or other tokens)
-• Minimum deposit: 0.02 USDC (0.01 tokens after 1¢ fee)
-• A 1¢ (0.01 USDC) fee is deducted for transaction costs
-• After sending, paste the transaction signature below
-• Processing may take a few seconds
+• Minimum deposit: 0.06 USDC (0.01 tokens after 5¢ fee)
+• 5¢ fee applies to all deposits
+• Use any Solana wallet (Phantom, Solflare, etc.)
 
-💡 Tip: You can use https://solscan.io to verify your transaction
+💡 Tip: Use https://solscan.io to verify your transaction
 
-🚀 After first deposit, you'll never need to verify signatures again!
+🚀 After verification, future deposits are automatic!
             `;
         }
 
@@ -180,24 +166,10 @@ To deposit USDC and get game tokens:
             let statusMessage;
 
             if (hasVerifiedWallet && !signature) {
-                // Force manual blockchain scan for verified users
-                console.log(`🔍 [FRONTEND] Triggering manual blockchain scan`);
-                this.updateScanStatus('scanning');
-                this.showInfo('Scanning blockchain for new deposits...');
-
-                // Trigger manual scan
-                const scanResponse = await fetch(`${this.apiBase}/admin/trigger-deposit-scan`, {
-                    method: 'POST'
-                });
-
-                if (scanResponse.ok) {
-                    console.log(`✅ [FRONTEND] Manual scan completed`);
-                    // Now do auto-update to get latest balance
-                    requestBody = { autoUpdate: true };
-                    statusMessage = 'Updating balance from latest scan...';
-                } else {
-                    throw new Error('Blockchain scan failed');
-                }
+                // Auto-update for verified users
+                console.log(`🔄 [FRONTEND] Using auto-update for verified user`);
+                requestBody = { autoUpdate: true };
+                statusMessage = 'Automatically updating balance from blockchain...';
             } else if (hasVerifiedWallet) {
                 // Auto-update for verified users with signature
                 console.log(`🔄 [FRONTEND] Using auto-update for verified user`);
@@ -269,6 +241,9 @@ To deposit USDC and get game tokens:
                 // Regular deposit success
                 this.showSuccess(`Successfully deposited ${data.usdcReceived} USDC (${data.feeDeducted}¢ fee deducted) → ${data.usdcAfterFee} USDC = ${data.gameTokensAdded} tokens!`);
             }
+
+            // Update header wallet display immediately
+            this.updateHeaderWalletDisplay();
 
             // Update UI
             this.updateWalletUI();
@@ -366,8 +341,25 @@ To deposit USDC and get game tokens:
         }
     }
 
+    updateHeaderWalletDisplay() {
+        // Update user wallet display in header
+        const userWallet = document.getElementById('user-wallet');
+        if (userWallet) {
+            if (this.userWalletAddress) {
+                userWallet.textContent = `Wallet: ${this.userWalletAddress.slice(0, 7)}...`;
+                console.log(`✅ [HEADER WALLET] Updated to: ${this.userWalletAddress.slice(0, 7)}...`);
+            } else {
+                userWallet.textContent = 'Wallet: Not connected';
+                console.log(`ℹ️ [HEADER WALLET] No wallet connected`);
+            }
+        }
+    }
+
     updateWalletUI() {
         console.log(`🔄 [WALLET UI] Updating balances - Game: ${this.gameBalance}`);
+
+        // Update user wallet display in header
+        this.updateHeaderWalletDisplay();
 
         // Update token balance display with proper precision handling
         const tokenBalance = document.getElementById('tokenBalance');
@@ -385,17 +377,7 @@ To deposit USDC and get game tokens:
         // Load treasury balance
         this.loadTreasuryBalance();
 
-        // Update wallet status
-        const walletStatus = document.getElementById('walletStatus');
-        if (walletStatus) {
-            if (this.userWalletAddress) {
-                walletStatus.textContent = `Wallet: ${this.userWalletAddress.slice(0, 8)}...${this.userWalletAddress.slice(-8)}`;
-                walletStatus.style.color = '#00ff88';
-            } else {
-                walletStatus.textContent = 'No wallet verified';
-                walletStatus.style.color = '#ff6b6b';
-            }
-        }
+
 
         // Show wallet section if user is logged in
         const walletSection = document.getElementById('wallet-section');
@@ -403,7 +385,6 @@ To deposit USDC and get game tokens:
         const depositBtn = document.getElementById('deposit-btn');
         const verifyBtn = document.getElementById('verify-deposit-btn');
         const signatureInput = document.getElementById('deposit-signature');
-        const autoScanStatus = document.getElementById('auto-scan-status');
 
         if (walletSection && window.authManager?.isAuthenticated) {
             walletSection.style.display = 'block';
@@ -415,16 +396,12 @@ To deposit USDC and get game tokens:
             // Update deposit UI based on verification status
             if (depositBtn && verifyBtn) {
                 if (this.userWalletAddress) {
-                    // Verified user - show automatic deposit detection
-                    depositBtn.textContent = '🔍 Auto-Detect Deposits';
-                    verifyBtn.textContent = '🔄 Force Balance Update';
+                    // Verified user - simplified deposit flow
+                    depositBtn.textContent = '📥 Deposit USDC';
+                    verifyBtn.textContent = '🔄 Update Balance';
                     if (signatureInput) {
                         signatureInput.style.display = 'none';
-                        signatureInput.placeholder = 'Blockchain scanning active - deposits detected automatically!';
-                    }
-                    // Show auto-scan status for verified users
-                    if (autoScanStatus) {
-                        autoScanStatus.style.display = 'block';
+                        signatureInput.placeholder = 'Deposits are verified automatically!';
                     }
                 } else {
                     // New user - show manual verification
@@ -433,10 +410,6 @@ To deposit USDC and get game tokens:
                     if (signatureInput) {
                         signatureInput.style.display = 'block';
                         signatureInput.placeholder = 'Enter transaction signature';
-                    }
-                    // Hide auto-scan status for new users
-                    if (autoScanStatus) {
-                        autoScanStatus.style.display = 'none';
                     }
                 }
             }
@@ -642,6 +615,10 @@ To deposit USDC and get game tokens:
                 this.userWalletAddress = userData.solanaAddress; // Store verified wallet address
 
                 console.log(`✅ [BALANCE SET] Game balance: ${this.gameBalance}, USDC balance: ${this.userBalance}`);
+                console.log(`🔑 [WALLET ADDRESS] Loaded: ${this.userWalletAddress}`);
+
+                // Update header wallet display immediately when wallet address is loaded
+                this.updateHeaderWalletDisplay();
 
                 // Update game instance
                 if (window.gameInstance) {
@@ -784,6 +761,11 @@ To deposit USDC and get game tokens:
         this.wallet = null;
         this.isConnected = false;
         this.userBalance = 0;
+        this.userWalletAddress = null; // Clear wallet address on logout
+
+        // Clear header wallet display immediately
+        this.updateHeaderWalletDisplay();
+
         this.updateWalletUI();
     }
 

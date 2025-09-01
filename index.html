@@ -12,13 +12,14 @@
             <div class="header-content">
                 <div class="logo-section">
                     <h1>BetBetter</h1>
-                    <p>The game where the odds are ever so slightly in your favor...</p>
+                    <p>Bet where the odds are <br>actually in your favor...</p>
                 </div>
                 <div class="auth-section">
                     <div id="user-info" class="user-info" style="display: none;">
                                                 <div class="user-avatar" id="user-avatar"></div>
                 <div class="user-details">
                     <div class="user-name" id="user-name"></div>
+                    <div class="user-wallet" id="user-wallet">Wallet: Not connected</div>
                 </div>
                         <button id="logout-btn" class="logout-btn">Logout</button>
                     </div>
@@ -49,7 +50,6 @@
                 <h2>Your Tokens: <span id="tokenBalance">0.00</span></h2>
                 <div class="balance-info">
                     <div class="treasury-balance">Treasury: <span id="treasuryBalance">Loading...</span></div>
-                    <div class="wallet-status" id="walletStatus">No wallet connected</div>
                 </div>
                 <div id="wallet-section" class="wallet-section" style="display: none;">
                     <div class="wallet-controls">
@@ -77,12 +77,6 @@
 
                         <div class="deposit-controls">
                             <button id="deposit-btn" class="wallet-btn deposit-btn">📥 Deposit USDC</button>
-                            <div id="auto-scan-status" class="auto-scan-status" style="display: none;">
-                                <div class="scan-indicator">
-                                    <span class="scan-dot">🔍</span>
-                                    <span class="scan-text">Auto-scanning blockchain for deposits...</span>
-                                </div>
-                            </div>
                             <div class="deposit-verification" style="display: none;">
                                 <input type="text" id="deposit-signature" placeholder="Enter transaction signature" style="width: 100%; margin: 5px 0;">
                                 <button id="verify-deposit-btn" class="wallet-btn verify-btn">✅ Verify Deposit</button>
@@ -106,6 +100,11 @@
                     <div class="dice-full-display">
                         <div id="diceCanvas" class="dice-canvas"></div>
                         <div class="dice-overlay-controls">
+                            <div class="security-indicator">
+                                <div id="server-security-badge" class="server-secure-badge">
+                                    🔐 <strong>Server-Side Security:</strong> All bets processed securely on server with crypto-randomness - slight user advantage!
+                                </div>
+                            </div>
                             <div class="bet-controls">
                                 <label for="betAmount">Bet Amount:</label>
                                 <div class="control-group">
@@ -143,7 +142,7 @@
 
         <footer>
             <p>3D Dice Roll Casino - Premium Gaming Experience!</p>
-            <p>50.001% win chance with polished 3D dice - slight mathematical advantage!</p>
+            <p>Server-side secure betting with 50.001% win chance - slight user advantage with crypto-randomness!</p>
         </footer>
     </div>
 

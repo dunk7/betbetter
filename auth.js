@@ -48,8 +48,11 @@ class AuthManager {
             this.user = JSON.parse(userData);
             this.isAuthenticated = true;
 
-            // Verify token is still valid
+            // Verify token is still valid and load profile data
             this.verifyToken();
+
+            // Load user profile data (including wallet address) on page load
+            this.loadUserProfile();
 
             // Update UI only if elements are available
             if (this.userInfo) {
@@ -135,7 +138,7 @@ class AuthManager {
 
             // Update user details
             this.userAvatar.style.backgroundImage = `url(${this.user.picture})`;
-            this.userAvatar.style.backgroundSize = 'cover';
+            this.userAvatar.style.backgroundSize = '150%';
             this.userAvatar.style.backgroundPosition = 'center';
             this.userAvatar.style.backgroundRepeat = 'no-repeat';
             this.userName.textContent = this.user.name;
@@ -206,6 +209,11 @@ class AuthManager {
                     window.solanaManager.gameBalance = parseFloat(userData.gameBalance) || 0;
                     window.solanaManager.userBalance = parseFloat(userData.usdcBalance) || 0;
                     window.solanaManager.userWalletAddress = userData.solanaAddress;
+                    console.log(`🔑 [AUTH] Setting wallet address: ${userData.solanaAddress}`);
+
+                    // Update header wallet display immediately
+                    window.solanaManager.updateHeaderWalletDisplay();
+
                     window.solanaManager.updateWalletUI();
                 }
 
