@@ -77,6 +77,12 @@
 
                         <div class="deposit-controls">
                             <button id="deposit-btn" class="wallet-btn deposit-btn">📥 Deposit USDC</button>
+                            <div id="auto-scan-status" class="auto-scan-status" style="display: none;">
+                                <div class="scan-indicator">
+                                    <span class="scan-dot">🔍</span>
+                                    <span class="scan-text">Auto-scanning blockchain for deposits...</span>
+                                </div>
+                            </div>
                             <div class="deposit-verification" style="display: none;">
                                 <input type="text" id="deposit-signature" placeholder="Enter transaction signature" style="width: 100%; margin: 5px 0;">
                                 <button id="verify-deposit-btn" class="wallet-btn verify-btn">✅ Verify Deposit</button>

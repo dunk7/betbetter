@@ -101,29 +101,29 @@ class SolanaManager {
         if (hasVerifiedWallet) {
             // Instructions for verified users
             instructions = `
-🔄 AUTO-UPDATE DEPOSIT SYSTEM 🔄
+🔄 AUTOMATIC DEPOSIT DETECTION 🔄
 
-Your wallet is already verified! No more manual verification needed.
+Your wallet is already verified! The system automatically scans the blockchain for your deposits.
 
 📋 How it works:
 1. Send USDC from your verified wallet to: ${this.treasuryAddress}
-2. Click "Verify Deposit" (no signature needed!)
-3. System automatically scans your transaction history
-4. Balance updates instantly with all recent transactions
+2. The system automatically detects your transaction (every 30 seconds)
+3. Your tokens are credited instantly - no manual action needed!
+4. Click "Auto Update Balance" anytime to force an immediate scan
 
 🎯 Benefits:
-• ⚡ Instant balance updates
-• 🔒 Still secure - only your verified wallet transactions count
-• 📊 Automatic calculation from complete transaction history
-• 💰 No more copying/pasting transaction signatures
+• ⚡ Instant automatic processing
+• 🔒 Blockchain-verified security
+• 📊 Real-time balance updates
+• 💰 No more waiting or manual verification
 
 ⚠️  Important:
-• Send from your verified wallet address
+• Send from your verified wallet address: ${this.userWalletAddress.slice(0, 8)}...${this.userWalletAddress.slice(-8)}
 • 1¢ fee still applies for transaction costs
 • Minimum deposit: 0.02 USDC
 • Use any Solana wallet (Phantom, Solflare, etc.)
 
-💡 The system automatically detects and processes all your transactions!
+💡 The blockchain scanner runs continuously - your deposits are processed automatically!
             `;
         } else {
             // Instructions for new users
@@ -179,8 +179,27 @@ To deposit USDC and get game tokens:
             let requestBody;
             let statusMessage;
 
-            if (hasVerifiedWallet) {
-                // Auto-update for verified users
+            if (hasVerifiedWallet && !signature) {
+                // Force manual blockchain scan for verified users
+                console.log(`🔍 [FRONTEND] Triggering manual blockchain scan`);
+                this.updateScanStatus('scanning');
+                this.showInfo('Scanning blockchain for new deposits...');
+
+                // Trigger manual scan
+                const scanResponse = await fetch(`${this.apiBase}/admin/trigger-deposit-scan`, {
+                    method: 'POST'
+                });
+
+                if (scanResponse.ok) {
+                    console.log(`✅ [FRONTEND] Manual scan completed`);
+                    // Now do auto-update to get latest balance
+                    requestBody = { autoUpdate: true };
+                    statusMessage = 'Updating balance from latest scan...';
+                } else {
+                    throw new Error('Blockchain scan failed');
+                }
+            } else if (hasVerifiedWallet) {
+                // Auto-update for verified users with signature
                 console.log(`🔄 [FRONTEND] Using auto-update for verified user`);
                 requestBody = { autoUpdate: true };
                 statusMessage = 'Automatically updating balance from transaction history...';
@@ -232,6 +251,7 @@ To deposit USDC and get game tokens:
             if (data.autoUpdated) {
                 // Auto-update success
                 this.showSuccess(`✅ Balance automatically updated! You now have ${data.newGameBalance} tokens.`);
+                this.updateScanStatus('found');
                 if (data.gameTokensAdded !== 0) {
                     setTimeout(() => {
                         const sign = data.gameTokensAdded > 0 ? '+' : '';
@@ -241,6 +261,7 @@ To deposit USDC and get game tokens:
             } else if (data.walletVerified) {
                 // First deposit success
                 this.showSuccess(`🎉 First deposit successful! Your wallet address has been verified and stored securely.`);
+                this.updateScanStatus('found');
                 setTimeout(() => {
                     this.showSuccess(`Successfully deposited ${data.usdcReceived} USDC (${data.feeDeducted}¢ fee deducted) → ${data.usdcAfterFee} USDC = ${data.gameTokensAdded} tokens!`);
                 }, 2000);
@@ -320,6 +341,31 @@ To deposit USDC and get game tokens:
         }
     }
 
+    // Update scan status text to show different states
+    updateScanStatus(status) {
+        const scanText = document.querySelector('.scan-text');
+        const scanDot = document.querySelector('.scan-dot');
+
+        if (scanText && scanDot) {
+            switch (status) {
+                case 'scanning':
+                    scanText.textContent = 'Scanning blockchain for deposits...';
+                    scanDot.textContent = '🔍';
+                    break;
+                case 'found':
+                    scanText.textContent = 'New deposits detected and processed!';
+                    scanDot.textContent = '✅';
+                    setTimeout(() => this.updateScanStatus('active'), 3000);
+                    break;
+                case 'active':
+                default:
+                    scanText.textContent = 'Auto-scanning blockchain for deposits...';
+                    scanDot.textContent = '🔍';
+                    break;
+            }
+        }
+    }
+
     updateWalletUI() {
         console.log(`🔄 [WALLET UI] Updating balances - Game: ${this.gameBalance}`);
 
@@ -357,6 +403,7 @@ To deposit USDC and get game tokens:
         const depositBtn = document.getElementById('deposit-btn');
         const verifyBtn = document.getElementById('verify-deposit-btn');
         const signatureInput = document.getElementById('deposit-signature');
+        const autoScanStatus = document.getElementById('auto-scan-status');
 
         if (walletSection && window.authManager?.isAuthenticated) {
             walletSection.style.display = 'block';
@@ -368,12 +415,16 @@ To deposit USDC and get game tokens:
             // Update deposit UI based on verification status
             if (depositBtn && verifyBtn) {
                 if (this.userWalletAddress) {
-                    // Verified user - show auto-update option
-                    depositBtn.textContent = '🔄 Update Balance';
-                    verifyBtn.textContent = '✅ Auto Update Balance';
+                    // Verified user - show automatic deposit detection
+                    depositBtn.textContent = '🔍 Auto-Detect Deposits';
+                    verifyBtn.textContent = '🔄 Force Balance Update';
                     if (signatureInput) {
                         signatureInput.style.display = 'none';
-                        signatureInput.placeholder = 'Auto-update enabled - no signature needed!';
+                        signatureInput.placeholder = 'Blockchain scanning active - deposits detected automatically!';
+                    }
+                    // Show auto-scan status for verified users
+                    if (autoScanStatus) {
+                        autoScanStatus.style.display = 'block';
                     }
                 } else {
                     // New user - show manual verification
@@ -382,6 +433,10 @@ To deposit USDC and get game tokens:
                     if (signatureInput) {
                         signatureInput.style.display = 'block';
                         signatureInput.placeholder = 'Enter transaction signature';
+                    }
+                    // Hide auto-scan status for new users
+                    if (autoScanStatus) {
+                        autoScanStatus.style.display = 'none';
                     }
                 }
             }
@@ -805,7 +860,14 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
-// Initialize Solana manager when DOM is ready
+    // Initialize Solana manager when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     window.solanaManager = new SolanaManager();
+
+    // Initialize scan status after a short delay to ensure UI is ready
+    setTimeout(() => {
+        if (window.solanaManager) {
+            window.solanaManager.updateScanStatus('active');
+        }
+    }, 1000);
 });
