@@ -1,0 +1,16 @@
+# Netlify Environment Variables Template
+# Copy these variable names to Netlify, but use YOUR actual values (not these examples)
+
+GOOGLE_CLIENT_ID=your_google_client_id_here
+GOOGLE_CLIENT_SECRET=your_google_client_secret_here
+JWT_SECRET=your_jwt_secret_here
+MONGODB_URI=your_mongodb_connection_string_here
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
+PORT=5000
+TREASURY_KEYPAIR=[your_treasury_keypair_array_here]
+NODE_ENV=production
+
+# SECURITY REMINDERS:
+# - Mark GOOGLE_CLIENT_SECRET, JWT_SECRET, MONGODB_URI, and TREASURY_KEYPAIR as "Secret"
+# - Leave others as regular environment variables
+# - Never commit actual values to git

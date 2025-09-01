@@ -64,10 +64,17 @@ if (process.env.TREASURY_KEYPAIR) {
 
 // Middleware
 app.use(cors({
-    origin: ['http://127.0.0.1:3000', 'http://localhost:3000', 'http://localhost:5000', 'http://127.0.0.1:35161'],
+    origin: [
+        'http://127.0.0.1:3000',
+        'http://localhost:3000',
+        'http://localhost:5000',
+        'http://127.0.0.1:35161',
+        'https://primimus.netlify.app',
+        'https://*.netlify.app'  // Allow all Netlify subdomains
+    ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 app.use(express.json());
 
@@ -75,10 +82,24 @@ app.use(express.json());
 app.use((req, res, next) => {
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
     res.setHeader('Cross-Origin-Embedder-Policy', 'unsafe-none');
-    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+
+    // Allow dynamic origins for Netlify deployments
+    const allowedOrigins = [
+        'http://127.0.0.1:3000',
+        'http://localhost:3000',
+        'http://localhost:5000',
+        'http://127.0.0.1:35161',
+        'https://primimus.netlify.app'
+    ];
+
+    const origin = req.headers.origin;
+    if (allowedOrigins.includes(origin) || origin?.endsWith('.netlify.app')) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
     next();
 });
 

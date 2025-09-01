@@ -9,12 +9,23 @@ class BetBetterGame {
         this.isRolling = false;
         this.dice3D = null;
         this.firstBetCompleted = false; // Track if first bet is done
+        this.apiBase = this.getApiBaseUrl(); // Dynamic API base URL
 
         this.initializeElements();
         this.attachEventListeners();
         this.initialize3DDice();
         this.updateDisplay();
         this.loadUserStats(); // Load accurate statistics from backend
+    }
+
+    getApiBaseUrl() {
+        // Check if we're running on Netlify (production)
+        if (window.location.hostname.includes('netlify.app')) {
+            // Use your production backend URL here
+            return 'https://your-backend-domain.com/api';
+        }
+        // Development fallback
+        return 'http://localhost:5000/api';
     }
 
     initializeElements() {
@@ -84,7 +95,7 @@ class BetBetterGame {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-            const response = await fetch('http://localhost:5000/api/game/place-bet', {
+            const response = await fetch(`${this.apiBase}/game/place-bet`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -370,7 +381,7 @@ class BetBetterGame {
         if (!window.authManager?.isAuthenticated) return;
 
         try {
-            const response = await fetch('http://localhost:5000/api/user/stats', {
+            const response = await fetch(`${this.apiBase}/user/stats`, {
                 headers: {
                     'Authorization': `Bearer ${window.authManager.token}`
                 }

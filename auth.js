@@ -4,8 +4,19 @@ class AuthManager {
         this.user = null;
         this.isAuthenticated = false;
         this.token = null;
-        this.apiBase = 'http://localhost:5000/api';
+        // Use environment-appropriate API base URL
+        this.apiBase = this.getApiBaseUrl();
         this.init();
+    }
+
+    getApiBaseUrl() {
+        // Check if we're running on Netlify (production)
+        if (window.location.hostname.includes('netlify.app')) {
+            // Use your production backend URL here
+            return 'https://your-backend-domain.com/api';
+        }
+        // Development fallback
+        return 'http://localhost:5000/api';
     }
 
     init() {

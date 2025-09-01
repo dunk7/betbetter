@@ -3,10 +3,20 @@ class SolanaManager {
     constructor() {
         this.connection = null;
         this.gameBalance = 0; // Will be loaded from backend
-        this.apiBase = 'http://localhost:5000/api';
+        this.apiBase = this.getApiBaseUrl();
         this.treasuryAddress = null;
         this.userWalletAddress = null; // User's verified wallet address
         this.init();
+    }
+
+    getApiBaseUrl() {
+        // Check if we're running on Netlify (production)
+        if (window.location.hostname.includes('netlify.app')) {
+            // Use your production backend URL here
+            return 'https://your-backend-domain.com/api';
+        }
+        // Development fallback
+        return 'http://localhost:5000/api';
     }
 
     init() {
