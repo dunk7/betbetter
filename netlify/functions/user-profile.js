@@ -1,8 +1,19 @@
 // Netlify Function for getting user profile
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
+const { Connection, PublicKey } = require('@solana/web3.js');
+const { getAssociatedTokenAddress } = require('@solana/spl-token');
 
 require('dotenv').config();
+
+// USDC Constants
+const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+
+// Solana connection
+const solanaConnection = new Connection(
+  process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
+  'confirmed'
+);
 
 // MongoDB connection with better error handling
 const connectDB = async () => {
@@ -32,10 +43,32 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.model('User', userSchema);
 
-// Helper function to get USDC balance - simplified for now
-async function getUSDCBalance() {
-  // Return mock balance for now to avoid Solana connection issues
-  return 0;
+// Helper function to get USDC balance from Solana wallet
+async function getUSDCBalance(walletAddress) {
+  try {
+    if (!walletAddress) {
+      console.log('No wallet address provided');
+      return 0;
+    }
+
+    const walletPublicKey = new PublicKey(walletAddress);
+    const associatedTokenAddress = await getAssociatedTokenAddress(USDC_MINT, walletPublicKey);
+
+    // Check if token account exists first
+    const accountInfo = await solanaConnection.getAccountInfo(associatedTokenAddress);
+    if (!accountInfo) {
+      console.log(`No USDC ATA found for wallet: ${walletAddress}`);
+      return 0;
+    }
+
+    const tokenBalance = await solanaConnection.getTokenAccountBalance(associatedTokenAddress);
+    const balance = tokenBalance.value.uiAmount || 0;
+    console.log(`💰 [USER BALANCE] ${walletAddress}: ${balance} USDC`);
+    return balance;
+  } catch (error) {
+    console.log(`❌ Error getting USDC balance for ${walletAddress}: ${error.message}`);
+    return 0;
+  }
 }
 
 exports.handler = async (event, context) => {
@@ -119,14 +152,17 @@ exports.handler = async (event, context) => {
         name: 'Test User',
         email: 'test@example.com',
         picture: '',
-        gameBalance: 50,
+        gameBalance: 0, // Users must buy tokens
         usdcBalance: 0,
         solanaAddress: null
       };
     }
 
-    // Get USDC balance (simplified)
-    const usdcBalance = await getUSDCBalance();
+    // Get USDC balance from user's Solana wallet
+    const usdcBalance = await getUSDCBalance(user.solanaAddress);
+
+    // Game balance reflects actual USDC holdings - users must buy tokens!
+    const gameBalance = usdcBalance;
 
     return {
       statusCode: 200,
@@ -140,7 +176,7 @@ exports.handler = async (event, context) => {
         name: user.name,
         email: user.email,
         picture: user.picture,
-        gameBalance: user.gameBalance || 50,
+        gameBalance: gameBalance,
         usdcBalance: usdcBalance,
         solanaAddress: user.solanaAddress
       })
@@ -161,7 +197,7 @@ exports.handler = async (event, context) => {
         name: 'Test User',
         email: 'test@example.com',
         picture: '',
-        gameBalance: 50,
+        gameBalance: 0, // Users must buy tokens
         usdcBalance: 0,
         solanaAddress: null
       })

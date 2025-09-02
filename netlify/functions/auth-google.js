@@ -86,7 +86,7 @@ exports.handler = async (event, context) => {
         email,
         name,
         picture,
-        gameBalance: 100, // Starting balance
+        gameBalance: 0, // Users must buy tokens - balance reflects USDC holdings
       });
     }
 
