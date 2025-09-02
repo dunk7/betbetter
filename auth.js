@@ -56,7 +56,14 @@ class AuthManager {
 
         if (token && userData) {
             this.token = token;
-            this.user = JSON.parse(userData);
+            const parsedUserData = JSON.parse(userData);
+            console.log(`🔍 [SESSION] Loading user data from localStorage:`);
+            console.log(`   - name: ${parsedUserData.name}`);
+            console.log(`   - email: ${parsedUserData.email}`);
+            console.log(`   - solanaAddress: ${parsedUserData.solanaAddress}`);
+            console.log(`   - solanaAddress type: ${typeof parsedUserData.solanaAddress}`);
+
+            this.user = parsedUserData;
             this.isAuthenticated = true;
 
             // Verify token is still valid and load profile data
@@ -112,6 +119,12 @@ class AuthManager {
             // Store backend token and user data
             this.token = data.token;
             this.user = data.user;
+
+            console.log(`🔍 [LOGIN] Storing user data in localStorage:`);
+            console.log(`   - name: ${this.user.name}`);
+            console.log(`   - email: ${this.user.email}`);
+            console.log(`   - solanaAddress: ${this.user.solanaAddress}`);
+            console.log(`   - solanaAddress type: ${typeof this.user.solanaAddress}`);
 
             localStorage.setItem('auth_token', this.token);
             localStorage.setItem('user_data', JSON.stringify(this.user));
@@ -217,10 +230,19 @@ class AuthManager {
                 // Notify solana manager about user data
                 if (window.solanaManager) {
                     console.log(`🔄 [AUTH] Updating solana manager with profile data`);
+                    console.log(`🔑 [AUTH] Profile data received:`);
+                    console.log(`   - gameBalance: ${userData.gameBalance}`);
+                    console.log(`   - usdcBalance: ${userData.usdcBalance}`);
+                    console.log(`   - solanaAddress: ${userData.solanaAddress}`);
+                    console.log(`   - solanaAddress type: ${typeof userData.solanaAddress}`);
+                    console.log(`   - solanaAddress is null: ${userData.solanaAddress === null}`);
+                    console.log(`   - solanaAddress is undefined: ${userData.solanaAddress === undefined}`);
+
                     window.solanaManager.gameBalance = parseFloat(userData.gameBalance) || 0;
                     window.solanaManager.userBalance = parseFloat(userData.usdcBalance) || 0;
                     window.solanaManager.userWalletAddress = userData.solanaAddress;
                     console.log(`🔑 [AUTH] Setting wallet address: ${userData.solanaAddress}`);
+                    console.log(`🔄 [AUTH] Solana manager wallet address set to: ${window.solanaManager.userWalletAddress}`);
 
                     // Update header wallet display immediately
                     window.solanaManager.updateHeaderWalletDisplay();

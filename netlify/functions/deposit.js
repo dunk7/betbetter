@@ -134,6 +134,12 @@ exports.handler = async (event, context) => {
     if (autoUpdate) {
       // Auto-update for verified users
       console.log(`🔄 [DEPOSIT] Auto-updating balance for verified user ${user.email}`);
+      console.log(`🔍 [DEPOSIT] User wallet verification check:`);
+      console.log(`   - user.solanaAddress: ${user.solanaAddress}`);
+      console.log(`   - typeof: ${typeof user.solanaAddress}`);
+      console.log(`   - is null: ${user.solanaAddress === null}`);
+      console.log(`   - is undefined: ${user.solanaAddress === undefined}`);
+      console.log(`   - is empty string: ${user.solanaAddress === ''}`);
 
       if (!user.solanaAddress) {
         console.log(`❌ [DEPOSIT] User ${user.email} attempted auto-update but has no verified wallet`);

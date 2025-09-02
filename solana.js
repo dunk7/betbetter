@@ -170,8 +170,13 @@ To get started with game tokens:
         }
 
         // Check if user has verified wallet for auto-update
-        const hasVerifiedWallet = this.userWalletAddress !== null;
-        console.log(`🔍 [FRONTEND] User has verified wallet: ${hasVerifiedWallet}`);
+        const hasVerifiedWallet = this.userWalletAddress !== null && this.userWalletAddress !== undefined;
+        console.log(`🔍 [FRONTEND] User wallet address check:`);
+        console.log(`   - userWalletAddress: ${this.userWalletAddress}`);
+        console.log(`   - typeof: ${typeof this.userWalletAddress}`);
+        console.log(`   - is null: ${this.userWalletAddress === null}`);
+        console.log(`   - is undefined: ${this.userWalletAddress === undefined}`);
+        console.log(`   - hasVerifiedWallet: ${hasVerifiedWallet}`);
 
         try {
             let requestBody;
@@ -612,7 +617,10 @@ To get started with game tokens:
 
     onUserLogin(user) {
         // User logged in, load their data from backend
-        console.log('User logged in:', user.name);
+        console.log(`👤 [USER LOGIN] User logged in: ${user.name}`);
+        console.log(`📧 [USER LOGIN] Email: ${user.email}`);
+        console.log(`🆔 [USER LOGIN] User ID: ${user.id}`);
+        console.log(`🔑 [USER LOGIN] Current wallet address before profile load: ${this.userWalletAddress}`);
         this.loadUserData();
     }
 
@@ -632,6 +640,11 @@ To get started with game tokens:
                 console.log(`💰 [USER DATA] Game tokens: ${userData.gameBalance}`);
                 console.log(`💵 [USER DATA] USDC balance: ${userData.usdcBalance}`);
                 console.log(`🔑 [USER DATA] Wallet address: ${userData.solanaAddress}`);
+                console.log(`🔍 [USER DATA] Wallet address details:`);
+                console.log(`   - typeof: ${typeof userData.solanaAddress}`);
+                console.log(`   - is null: ${userData.solanaAddress === null}`);
+                console.log(`   - is undefined: ${userData.solanaAddress === undefined}`);
+                console.log(`   - is empty string: ${userData.solanaAddress === ''}`);
 
                 // Set balances with proper type conversion
                 this.gameBalance = parseFloat(userData.gameBalance) || 0;
