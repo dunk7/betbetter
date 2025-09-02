@@ -86,7 +86,7 @@ exports.handler = async (event, context) => {
         email,
         name,
         picture,
-        gameBalance: 50, // Starting balance
+        gameBalance: 100, // Starting balance
       });
     }
 
