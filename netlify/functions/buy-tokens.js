@@ -254,25 +254,34 @@ exports.handler = async (event, context) => {
       )
     );
 
-    // For demo purposes, we'll simulate the transaction since we can't actually sign with user's key
-    // In production, this would require the frontend to sign and send the transaction
-    console.log(`Simulating USDC transfer: ${amount} USDC from ${user.solanaAddress} to treasury`);
+    // NOTE: In production, the frontend should send the actual signed transaction
+    // For now, we'll simulate the transaction result since we can't sign with user's key
+    console.log(`⚠️ [BUY-TOKENS] SIMULATING USDC transfer: ${amount} USDC from ${user.solanaAddress} to treasury`);
+    console.log(`💡 [BUY-TOKENS] Frontend should send signed transaction to complete purchase`);
+
+    // Simulate transaction signature for now
+    const simulatedSignature = `simulated_buy_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     // Update user balance and create transaction record
+    const oldBalance = user.gameBalance;
     user.gameBalance += amount;
     await user.save();
+
+    console.log(`💰 [BUY-TOKENS] Updated user balance: ${oldBalance} → ${user.gameBalance} casino tokens`);
 
     const gameTransaction = new GameTransaction({
       userId: user._id,
       type: 'deposit',
-      amount: amount,
-      tokenAmount: amount,
+      amount: amount, // USDC amount
+      tokenAmount: amount, // Casino tokens credited
       fromAddress: user.solanaAddress,
       toAddress: treasuryPublicKey.toString(),
-      solanaTxHash: `simulated_${Date.now()}`,
+      solanaTxHash: simulatedSignature,
       status: 'completed'
     });
     await gameTransaction.save();
+
+    console.log(`✅ [BUY-TOKENS] Transaction record saved: ${simulatedSignature}`);
 
     return {
       statusCode: 200,
