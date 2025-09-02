@@ -123,7 +123,7 @@ Your wallet is verified! Send USDC and we'll handle the rest automatically.
 3. Done! Your tokens appear instantly
 
 ⚠️  Important:
-• Send from your verified wallet: ${this.userWalletAddress.slice(0, 8)}...${this.userWalletAddress.slice(-8)}
+• Send from your verified wallet: ${this.userWalletAddress ? `${this.userWalletAddress.slice(0, 8)}...${this.userWalletAddress.slice(-8)}` : 'your verified wallet'}
 • 5¢ fee applies to all deposits
 • Minimum deposit: 0.06 USDC
 • Use any Solana wallet (Phantom, Solflare, etc.)
