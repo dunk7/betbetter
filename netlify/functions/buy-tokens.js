@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const { Connection, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction, Keypair } = require('@solana/web3.js');
 const { createTransferInstruction, getAssociatedTokenAddress, createAssociatedTokenAddressInstruction, getAccount } = require('@solana/spl-token');
+const BN = require('bn.js');
 const User = require('./user-schema.js');
 
 require('dotenv').config();
@@ -254,13 +255,130 @@ exports.handler = async (event, context) => {
       )
     );
 
-    // NOTE: In production, the frontend should send the actual signed transaction
-    // For now, we'll simulate the transaction result since we can't sign with user's key
-    console.log(`⚠️ [BUY-TOKENS] SIMULATING USDC transfer: ${amount} USDC from ${user.solanaAddress} to treasury`);
-    console.log(`💡 [BUY-TOKENS] Frontend should send signed transaction to complete purchase`);
+    // Verify the signed transaction from frontend
+    console.log(`🔍 [BUY-TOKENS] Verifying real USDC transfer transaction...`);
 
-    // Simulate transaction signature for now
-    const simulatedSignature = `simulated_buy_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const { solanaTxHash } = JSON.parse(event.body);
+    if (!solanaTxHash) {
+      console.log(`❌ [BUY-TOKENS] No transaction hash provided`);
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS'
+        },
+        body: JSON.stringify({ error: 'Transaction hash is required' })
+      };
+    }
+
+    console.log(`🔍 [BUY-TOKENS] Verifying transaction: ${solanaTxHash}`);
+
+    // Verify transaction on Solana blockchain
+    let transactionDetails;
+    try {
+      transactionDetails = await solanaConnection.getTransaction(solanaTxHash, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0
+      });
+
+      if (!transactionDetails) {
+        console.log(`❌ [BUY-TOKENS] Transaction not found: ${solanaTxHash}`);
+        return {
+          statusCode: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS'
+          },
+          body: JSON.stringify({ error: 'Transaction not found on blockchain' })
+        };
+      }
+
+      console.log(`✅ [BUY-TOKENS] Transaction found on blockchain`);
+
+      // Verify transaction details
+      const tx = transactionDetails.transaction;
+      const accountKeys = tx.message.accountKeys;
+
+      // Find the transfer instruction
+      let transferFound = false;
+      let actualAmount = 0;
+
+      for (const instruction of tx.message.instructions) {
+        // Check if this is a token transfer (program ID for SPL Token)
+        if (instruction.programIdIndex === accountKeys.length - 1) { // Last account is usually the program
+          const programId = accountKeys[instruction.programIdIndex];
+          if (programId.toString() === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') { // SPL Token program
+            // This is likely a token transfer
+            const instructionData = instruction.data;
+            if (instructionData && instructionData.length >= 9) {
+              // Extract amount from transfer instruction (bytes 1-8 are the amount)
+              const amountBytes = instructionData.slice(1, 9);
+              actualAmount = Number(new BN(amountBytes, 'le').toString()) / 1000000; // Convert from lamports to USDC
+              transferFound = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!transferFound) {
+        console.log(`❌ [BUY-TOKENS] No token transfer found in transaction`);
+        return {
+          statusCode: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS'
+          },
+          body: JSON.stringify({ error: 'Invalid transaction: no token transfer found' })
+        };
+      }
+
+      // Verify amount matches expected
+      if (Math.abs(actualAmount - amount) > 0.000001) { // Small tolerance for floating point
+        console.log(`❌ [BUY-TOKENS] Amount mismatch: expected ${amount}, got ${actualAmount}`);
+        return {
+          statusCode: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS'
+          },
+          body: JSON.stringify({ error: `Amount mismatch: expected ${amount} USDC, transaction shows ${actualAmount} USDC` })
+        };
+      }
+
+      console.log(`✅ [BUY-TOKENS] Transaction verified: ${actualAmount} USDC transferred`);
+
+    } catch (error) {
+      console.error(`❌ [BUY-TOKENS] Transaction verification failed:`, error);
+      return {
+        statusCode: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS'
+        },
+        body: JSON.stringify({ error: `Transaction verification failed: ${error.message}` })
+      };
+    }
+
+    // Check if transaction was already processed
+    const existingTx = await GameTransaction.findOne({ solanaTxHash });
+    if (existingTx) {
+      console.log(`⚠️ [BUY-TOKENS] Transaction already processed: ${solanaTxHash}`);
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS'
+        },
+        body: JSON.stringify({ error: 'Transaction already processed' })
+      };
+    }
 
     // Update user balance and create transaction record
     const oldBalance = user.gameBalance;
@@ -276,12 +394,12 @@ exports.handler = async (event, context) => {
       tokenAmount: amount, // Casino tokens credited
       fromAddress: user.solanaAddress,
       toAddress: treasuryPublicKey.toString(),
-      solanaTxHash: simulatedSignature,
+      solanaTxHash: solanaTxHash,
       status: 'completed'
     });
     await gameTransaction.save();
 
-    console.log(`✅ [BUY-TOKENS] Transaction record saved: ${simulatedSignature}`);
+    console.log(`✅ [BUY-TOKENS] Transaction record saved: ${solanaTxHash}`);
 
     return {
       statusCode: 200,
@@ -294,8 +412,10 @@ exports.handler = async (event, context) => {
         success: true,
         amount: amount,
         newBalance: user.gameBalance,
+        gameTokensAdded: amount,
         transactionId: gameTransaction._id,
-        message: `Successfully purchased ${amount} casino tokens!`
+        solanaTxHash: solanaTxHash,
+        message: `Successfully purchased ${amount} casino tokens with ${amount} USDC!`
       })
     };
 

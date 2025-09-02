@@ -54,6 +54,11 @@ class SolanaManager {
             withdrawBtn.addEventListener('click', () => this.handleWithdraw());
         }
 
+        const buyTokensBtn = document.getElementById('buy-tokens-btn');
+        if (buyTokensBtn) {
+            buyTokensBtn.addEventListener('click', () => this.handleBuyTokens());
+        }
+
         if (copyTreasuryBtn) {
             copyTreasuryBtn.addEventListener('click', () => this.copyTreasuryAddress());
         }
@@ -565,6 +570,152 @@ To get started with game tokens:
         }
     }
 
+    async handleBuyTokens() {
+        console.log(`🛒 [FRONTEND] Starting token purchase...`);
+
+        // Check if user is authenticated
+        if (!window.authManager?.token) {
+            console.log(`❌ [FRONTEND] No auth token available`);
+            this.showError('Please login first.');
+            return;
+        }
+
+        // Check if wallet is connected
+        if (!window.solana || !window.solana.isConnected) {
+            this.showError('Please connect your Solana wallet first.');
+            return;
+        }
+
+        // Check treasury address
+        if (!this.treasuryAddress) {
+            this.showError('Treasury address not loaded. Please refresh and try again.');
+            return;
+        }
+
+        const amountInput = document.getElementById('buy-amount');
+        const amount = parseFloat(amountInput.value);
+
+        if (!amount || amount <= 0) {
+            this.showError('Please enter a valid USDC amount.');
+            return;
+        }
+
+        if (amount < 0.01) {
+            this.showError('Minimum purchase is 0.01 USDC.');
+            return;
+        }
+
+        if (amount > 10000) {
+            this.showError('Maximum purchase is 10,000 USDC.');
+            return;
+        }
+
+        try {
+            console.log(`🛒 [FRONTEND] Creating USDC transfer transaction for ${amount} USDC...`);
+            this.showInfo('Creating transaction and requesting wallet signature...');
+
+            // Import required Solana libraries
+            const { Transaction, PublicKey } = window.solanaWeb3 || window.solana;
+            const { createTransferInstruction, getAssociatedTokenAddress } = (window.solanaWeb3 || window.solana).splToken || window.solana.splToken;
+
+            // USDC mint address
+            const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
+
+            // Treasury public key
+            const treasuryPubkey = new PublicKey(this.treasuryAddress);
+
+            // Get user's wallet public key
+            const userPubkey = window.solana.publicKey;
+
+            // Get associated token accounts
+            const userATA = await getAssociatedTokenAddress(USDC_MINT, userPubkey);
+            const treasuryATA = await getAssociatedTokenAddress(USDC_MINT, treasuryPubkey);
+
+            // Convert amount to lamports (USDC has 6 decimals)
+            const amountLamports = Math.floor(amount * 1000000);
+
+            // Create transaction
+            const transaction = new Transaction();
+
+            // Add transfer instruction
+            transaction.add(
+                createTransferInstruction(
+                    userATA,
+                    treasuryATA,
+                    userPubkey,
+                    amountLamports
+                )
+            );
+
+            // Get recent blockhash
+            const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash('confirmed');
+            transaction.recentBlockhash = blockhash;
+            transaction.lastValidBlockHeight = lastValidBlockHeight;
+            transaction.feePayer = userPubkey;
+
+            console.log(`🔐 [FRONTEND] Requesting wallet signature...`);
+
+            // Sign and send the transaction
+            const signature = await window.solana.signAndSendTransaction(transaction);
+
+            console.log(`✅ [FRONTEND] Transaction signed and sent: ${signature.signature}`);
+            this.showInfo('Transaction submitted! Processing purchase...');
+
+            console.log(`📤 [FRONTEND] Sending purchase request to backend...`);
+
+            // Send to backend for validation and token credit
+            const response = await fetch(`${this.apiBase}/buy-tokens`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${window.authManager.token}`
+                },
+                body: JSON.stringify({
+                    amount: amount,
+                    solanaTxHash: signature.signature
+                })
+            });
+
+            console.log(`📥 [FRONTEND] Buy tokens API response status: ${response.status}`);
+
+            const data = await response.json();
+            console.log(`📥 [FRONTEND] Buy tokens API response data:`, data);
+
+            if (!response.ok) {
+                console.log(`❌ [FRONTEND] Buy tokens API error:`, data.error);
+                throw new Error(data.error || 'Token purchase failed');
+            }
+
+            console.log(`✅ [FRONTEND] Buy tokens API success`);
+
+            // Update local balances
+            this.gameBalance = parseFloat(data.newBalance) || 0;
+            console.log(`💰 [BUY-TOKENS] Updated gameBalance to: ${this.gameBalance}`);
+
+            // Update game balance
+            if (window.gameInstance) {
+                window.gameInstance.tokens = this.gameBalance;
+                window.gameInstance.updateDisplay();
+            }
+
+            // Update UI
+            this.updateWalletUI();
+            this.loadTransactionHistory();
+
+            // Clear input
+            amountInput.value = '';
+
+            this.showSuccess(data.message || `Successfully purchased ${data.gameTokensAdded} casino tokens with ${amount} USDC!`);
+
+            // Add transaction to history
+            this.addTransaction('buy', amount, data.gameTokensAdded || amount);
+
+        } catch (error) {
+            console.error('Buy tokens error:', error);
+            this.showError(error.message || 'Token purchase failed. Please try again.');
+        }
+    }
+
     addTransaction(type, solAmount, tokenAmount) {
         const transactionList = document.getElementById('transaction-list');
         if (!transactionList) return;
@@ -573,14 +724,23 @@ To get started with game tokens:
         const transactionDiv = document.createElement('div');
         transactionDiv.className = 'transaction-item';
 
-        const typeText = type === 'deposit' ? 'Deposit' : 'Withdrawal';
-        const typeColor = type === 'deposit' ? '#00ff88' : '#ff6b6b';
+        let typeText, typeColor;
+        if (type === 'deposit') {
+            typeText = 'Deposit';
+            typeColor = '#00ff88';
+        } else if (type === 'buy') {
+            typeText = 'Buy Tokens';
+            typeColor = '#ff6b35';
+        } else {
+            typeText = 'Withdrawal';
+            typeColor = '#ff6b6b';
+        }
 
         transactionDiv.innerHTML = `
             <div class="transaction-info">
                 <span class="transaction-type" style="color: ${typeColor}">${typeText}</span>
-                <span class="transaction-amount">${solAmount.toFixed(4)} SOL</span>
-                <span class="transaction-tokens">(${tokenAmount} tokens)</span>
+                <span class="transaction-amount">${solAmount.toFixed(4)} USDC</span>
+                <span class="transaction-tokens">(+${tokenAmount} tokens)</span>
             </div>
             <div class="transaction-time">${timestamp}</div>
         `;
