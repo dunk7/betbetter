@@ -30,7 +30,10 @@ class SolanaManager {
 
         this.connection = new SolanaWeb3.Connection(
             SolanaWeb3.clusterApiUrl('mainnet-beta'),
-            'confirmed'
+            {
+                commitment: 'confirmed',
+                maxSupportedTransactionVersion: 0  // Support legacy transactions
+            }
         );
 
         // Setup UI event listeners
