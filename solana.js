@@ -221,7 +221,7 @@ To get started with game tokens:
             console.log(`✅ [FRONTEND] Deposit API success`);
 
             // Update local balances
-            this.gameBalance = data.newGameBalance;
+            this.gameBalance = data.newBalance;
 
             // Update game balance
             if (window.gameInstance) {
@@ -232,7 +232,7 @@ To get started with game tokens:
             // Handle different response types
             if (data.autoUpdated) {
                 // Auto-update success
-                this.showSuccess(`✅ Balance automatically updated! You now have ${data.newGameBalance} tokens.`);
+                this.showSuccess(`✅ Balance automatically updated! You now have ${data.newBalance} tokens.`);
                 this.updateScanStatus('found');
                 if (data.gameTokensAdded !== 0) {
                     setTimeout(() => {
@@ -366,6 +366,12 @@ To get started with game tokens:
     }
 
     updateWalletUI() {
+        // Ensure gameBalance is a valid number
+        if (typeof this.gameBalance !== 'number' || isNaN(this.gameBalance)) {
+            console.log(`⚠️ [WALLET UI] gameBalance is invalid: ${this.gameBalance}, resetting to 0`);
+            this.gameBalance = 0;
+        }
+
         console.log(`🔄 [WALLET UI] Updating balances - Game: ${this.gameBalance}`);
 
         // Update user wallet display in header
@@ -532,7 +538,8 @@ To get started with game tokens:
             console.log(`✅ [FRONTEND] Withdrawal API success`);
 
             // Update local balances
-            this.gameBalance = data.newGameBalance;
+            this.gameBalance = parseFloat(data.newBalance) || 0;
+            console.log(`💰 [WITHDRAW] Updated gameBalance to: ${this.gameBalance}`);
 
             // Update game balance
             if (window.gameInstance) {
@@ -547,7 +554,10 @@ To get started with game tokens:
             // Clear input
             amountInput.value = '';
 
-            this.showSuccess(`Successfully withdrew ${data.usdcReceived} USDC to your verified wallet!`);
+            this.showSuccess(data.message || `Successfully withdrew ${amount} tokens to your wallet!`);
+
+            // Add transaction to history
+            this.addTransaction('withdraw', amount, amount);
 
         } catch (error) {
             console.error('Withdrawal error:', error);
