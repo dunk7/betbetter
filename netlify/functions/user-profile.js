@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const { Connection, PublicKey } = require('@solana/web3.js');
 const { getAssociatedTokenAddress } = require('@solana/spl-token');
+const User = require('./user-schema.js');
 
 require('dotenv').config();
 
@@ -28,20 +29,7 @@ const connectDB = async () => {
   }
 };
 
-// User Schema
-const userSchema = new mongoose.Schema({
-  googleId: { type: String, required: true, unique: true },
-  email: { type: String, required: true, unique: true },
-  name: String,
-  picture: String,
-  solanaAddress: String,
-  gameBalance: { type: Number, default: 0 },
-  usdcBalance: { type: Number, default: 0 },
-  createdAt: { type: Date, default: Date.now },
-  lastLogin: { type: Date, default: Date.now }
-});
-
-const User = mongoose.model('User', userSchema);
+// User model imported from shared schema
 
 // Helper function to get USDC balance from Solana wallet
 async function getUSDCBalance(walletAddress) {

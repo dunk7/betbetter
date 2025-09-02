@@ -1,6 +1,7 @@
 // Netlify Function for reconciling user balance
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
+const User = require('./user-schema.js');
 
 require('dotenv').config();
 
@@ -108,17 +109,6 @@ exports.handler = async (event, context) => {
     }
 
     // Get user to find current balance
-    const User = mongoose.model('User', new mongoose.Schema({
-      googleId: String,
-      email: String,
-      name: String,
-      picture: String,
-      solanaAddress: String,
-      gameBalance: { type: Number, default: 0 },
-      usdcBalance: { type: Number, default: 0 },
-      createdAt: { type: Date, default: Date.now },
-      lastLogin: { type: Date, default: Date.now }
-    }));
 
     const user = await User.findById(decoded.userId);
     if (!user) {

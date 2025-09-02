@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { OAuth2Client } = require('google-auth-library');
+const User = require('./user-schema.js');
 
 require('dotenv').config();
 
@@ -20,20 +21,7 @@ const connectDB = async () => {
   }
 };
 
-// User Schema
-const userSchema = new mongoose.Schema({
-  googleId: { type: String, required: true, unique: true },
-  email: { type: String, required: true, unique: true },
-  name: String,
-  picture: String,
-  solanaAddress: String,
-  gameBalance: { type: Number, default: 0 },
-  usdcBalance: { type: Number, default: 0 },
-  createdAt: { type: Date, default: Date.now },
-  lastLogin: { type: Date, default: Date.now }
-});
-
-const User = mongoose.model('User', userSchema);
+// User model imported from shared schema
 
 exports.handler = async (event, context) => {
   // Only allow POST requests

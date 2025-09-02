@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const { Connection, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction, Keypair } = require('@solana/web3.js');
 const { createTransferInstruction, getAssociatedTokenAddress, createAssociatedTokenAddressInstruction, getAccount } = require('@solana/spl-token');
+const User = require('./user-schema.js');
 
 require('dotenv').config();
 
@@ -170,17 +171,6 @@ exports.handler = async (event, context) => {
     }
 
     // Get user
-    const User = mongoose.model('User', new mongoose.Schema({
-      googleId: String,
-      email: String,
-      name: String,
-      picture: String,
-      solanaAddress: String,
-      gameBalance: { type: Number, default: 0 },
-      usdcBalance: { type: Number, default: 0 },
-      createdAt: { type: Date, default: Date.now },
-      lastLogin: { type: Date, default: Date.now }
-    }));
 
     const user = await User.findById(decoded.userId);
     if (!user) {
