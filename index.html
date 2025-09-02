@@ -29,6 +29,7 @@
                              data-context="signin"
                              data-ux_mode="popup"
                              data-callback="handleCredentialResponse"
+                             data-login_uri=""
                              data-auto_select="true"
                              data-itp_support="true">
                         </div>
@@ -150,6 +151,25 @@
 
     <!-- Google OAuth -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+    <!-- Google OAuth Configuration -->
+    <script>
+        // Dynamically set Google OAuth login_uri based on current domain
+        document.addEventListener('DOMContentLoaded', function() {
+            const gIdOnload = document.getElementById('g_id_onload');
+            if (gIdOnload) {
+                // Set login_uri based on current domain
+                if (window.location.hostname === 'primimus.com' || window.location.hostname === 'www.primimus.com') {
+                    gIdOnload.setAttribute('data-login_uri', 'https://primimus.com');
+                } else if (window.location.hostname.includes('netlify.app')) {
+                    gIdOnload.setAttribute('data-login_uri', 'https://' + window.location.hostname);
+                } else {
+                    // Development - use localhost
+                    gIdOnload.setAttribute('data-login_uri', window.location.origin);
+                }
+            }
+        });
+    </script>
 
     <!-- Development Notice -->
     <script>

@@ -10,10 +10,10 @@ class AuthManager {
     }
 
     getApiBaseUrl() {
-        // Check if we're running on Netlify (production)
-        if (window.location.hostname.includes('netlify.app')) {
+        // Check if we're running on primimus.com (production)
+        if (window.location.hostname === 'primimus.com' || window.location.hostname === 'www.primimus.com') {
             // Use Netlify Functions URLs
-            return 'https://primimus.netlify.app/.netlify/functions';
+            return 'https://primimus.com/.netlify/functions';
         }
         // Development fallback
         return 'http://localhost:5000/api';

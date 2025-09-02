@@ -60,14 +60,32 @@ async function getUSDCBalance(walletAddress) {
 }
 
 exports.handler = async (event, context) => {
+  // Get the origin from the request
+  const origin = event.headers.origin || event.headers.Origin || '';
+
+  // Define allowed origins
+  const allowedOrigins = [
+    'https://primimus.com',
+    'https://www.primimus.com',
+    'https://primimus.netlify.app',
+    'http://localhost:3000',
+    'http://localhost:5000',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:5000'
+  ];
+
+  // Check if origin is allowed
+  const isAllowedOrigin = allowedOrigins.includes(origin) || origin.endsWith('.netlify.app');
+
   // Only allow GET requests
   if (event.httpMethod !== 'GET') {
     return {
       statusCode: 405,
       headers: {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': isAllowedOrigin ? origin : 'https://primimus.com',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS'
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Credentials': 'true'
       },
       body: JSON.stringify({ error: 'Method not allowed' })
     };
@@ -78,9 +96,10 @@ exports.handler = async (event, context) => {
     return {
       statusCode: 200,
       headers: {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': isAllowedOrigin ? origin : 'https://primimus.com',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS'
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Credentials': 'true'
       },
       body: ''
     };
@@ -95,9 +114,10 @@ exports.handler = async (event, context) => {
       return {
         statusCode: 401,
         headers: {
-          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Origin': isAllowedOrigin ? origin : 'https://primimus.com',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          'Access-Control-Allow-Methods': 'GET, OPTIONS'
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Credentials': 'true'
         },
         body: JSON.stringify({ error: 'Access token required' })
       };
@@ -112,9 +132,10 @@ exports.handler = async (event, context) => {
       return {
         statusCode: 401,
         headers: {
-          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Origin': isAllowedOrigin ? origin : 'https://primimus.com',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          'Access-Control-Allow-Methods': 'GET, OPTIONS'
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Credentials': 'true'
         },
         body: JSON.stringify({ error: 'Invalid token' })
       };
@@ -155,9 +176,10 @@ exports.handler = async (event, context) => {
     return {
       statusCode: 200,
       headers: {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': isAllowedOrigin ? origin : 'https://primimus.com',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS'
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Credentials': 'true'
       },
       body: JSON.stringify({
         id: user._id,
@@ -176,9 +198,10 @@ exports.handler = async (event, context) => {
     return {
       statusCode: 200,
       headers: {
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': isAllowedOrigin ? origin : 'https://primimus.com',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Methods': 'GET, OPTIONS'
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Credentials': 'true'
       },
       body: JSON.stringify({
         id: 'fallback-user',

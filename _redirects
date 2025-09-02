@@ -1,0 +1,12 @@
+# Netlify redirects file for primimus.com domain
+# Redirect www to non-www for consistency
+https://www.primimus.com/* https://primimus.com/:splat 301!
+
+# API function redirects to Netlify Functions
+/api/* /.netlify/functions/:splat 200
+
+# Handle legacy Netlify domain redirects (if needed during transition)
+/.netlify/functions/* /.netlify/functions/:splat 200
+
+# SPA fallback - serve index.html for all other routes
+/* /index.html 200

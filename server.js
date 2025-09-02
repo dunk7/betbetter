@@ -69,6 +69,8 @@ app.use(cors({
         'http://localhost:3000',
         'http://localhost:5000',
         'http://127.0.0.1:35161',
+        'https://primimus.com',
+        'https://www.primimus.com',
         'https://primimus.netlify.app',
         'https://*.netlify.app'  // Allow all Netlify subdomains
     ],
@@ -89,6 +91,8 @@ app.use((req, res, next) => {
         'http://localhost:3000',
         'http://localhost:5000',
         'http://127.0.0.1:35161',
+        'https://primimus.com',
+        'https://www.primimus.com',
         'https://primimus.netlify.app'
     ];
 
