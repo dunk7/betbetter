@@ -25,7 +25,10 @@ if (process.env.TREASURY_KEYPAIR) {
 // Solana connection
 const solanaConnection = new Connection(
   process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
-  'confirmed'
+  {
+    commitment: 'confirmed',
+    maxSupportedTransactionVersion: 0  // Support legacy transactions
+  }
 );
 
 // Helper function to get USDC balance

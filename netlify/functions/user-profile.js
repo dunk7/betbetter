@@ -13,7 +13,10 @@ const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 // Solana connection
 const solanaConnection = new Connection(
   process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
-  'confirmed'
+  {
+    commitment: 'confirmed',
+    maxSupportedTransactionVersion: 0  // Support legacy transactions
+  }
 );
 
 // MongoDB connection with better error handling

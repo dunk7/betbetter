@@ -455,7 +455,10 @@ To get started with game tokens:
         const SolanaWeb3 = window.solanaWeb3 || window.solana;
         const connection = new SolanaWeb3.Connection(
             SolanaWeb3.clusterApiUrl('mainnet-beta'),
-            'confirmed'
+            {
+                commitment: 'confirmed',
+                maxSupportedTransactionVersion: 0  // Support legacy transactions
+            }
         );
 
         // Get USDC mint

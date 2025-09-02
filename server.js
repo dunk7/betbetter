@@ -130,7 +130,10 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 // Solana connection
 const solanaConnection = new Connection(
     process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
-    'confirmed'
+    {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0  // Support legacy transactions
+    }
 );
 
 // USDC Utility Functions

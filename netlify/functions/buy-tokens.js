@@ -17,7 +17,10 @@ const TREASURY_ADDRESS = process.env.TREASURY_ADDRESS;
 // Solana connection
 const solanaConnection = new Connection(
   process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
-  'confirmed'
+  {
+    commitment: 'confirmed',
+    maxSupportedTransactionVersion: 0  // Support legacy transactions
+  }
 );
 
 // MongoDB connection
