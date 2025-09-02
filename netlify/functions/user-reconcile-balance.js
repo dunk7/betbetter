@@ -93,10 +93,71 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // For now, return mock reconciliation data
-    // In a real implementation, this would calculate balance from transaction history
-    const previousBalance = 50;
-    const newBalance = 50;
+    // Connect to database
+    const dbConnected = await connectDB();
+    if (dbConnected === false) {
+      return {
+        statusCode: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS'
+        },
+        body: JSON.stringify({ error: 'Database connection failed' })
+      };
+    }
+
+    // Get user to find current balance
+    const User = mongoose.model('User', new mongoose.Schema({
+      googleId: String,
+      email: String,
+      name: String,
+      picture: String,
+      solanaAddress: String,
+      gameBalance: { type: Number, default: 0 },
+      usdcBalance: { type: Number, default: 0 },
+      createdAt: { type: Date, default: Date.now },
+      lastLogin: { type: Date, default: Date.now }
+    }));
+
+    const user = await User.findById(decoded.userId);
+    if (!user) {
+      return {
+        statusCode: 404,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS'
+        },
+        body: JSON.stringify({ error: 'User not found' })
+      };
+    }
+
+    const previousBalance = user.gameBalance;
+
+    // Calculate balance from transaction history
+    const transactions = await GameTransaction.find({ userId: decoded.userId, status: 'completed' }).sort({ timestamp: 1 });
+
+    let calculatedBalance = 0;
+    for (const transaction of transactions) {
+      if (transaction.type === 'deposit') {
+        calculatedBalance += transaction.amount;
+      } else if (transaction.type === 'withdraw') {
+        calculatedBalance -= transaction.amount;
+      } else if (transaction.type === 'bet_win') {
+        calculatedBalance += transaction.amount;
+      } else if (transaction.type === 'bet_loss') {
+        calculatedBalance -= transaction.amount;
+      }
+    }
+
+    // Update user balance if it doesn't match calculated balance
+    const newBalance = calculatedBalance;
+    if (user.gameBalance !== calculatedBalance) {
+      user.gameBalance = calculatedBalance;
+      await user.save();
+      console.log(`Balance reconciled for user ${decoded.userId}: ${previousBalance} → ${newBalance}`);
+    }
 
     return {
       statusCode: 200,

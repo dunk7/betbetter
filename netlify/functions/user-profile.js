@@ -158,11 +158,11 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // Get USDC balance from user's Solana wallet
+    // Get USDC balance from user's Solana wallet (for display purposes)
     const usdcBalance = await getUSDCBalance(user.solanaAddress);
 
-    // Game balance reflects actual USDC holdings - users must buy tokens!
-    const gameBalance = usdcBalance;
+    // Game balance is the casino-specific tokens they've purchased (stored in DB)
+    const gameBalance = user.gameBalance || 0;
 
     return {
       statusCode: 200,
