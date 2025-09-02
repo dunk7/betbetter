@@ -10,14 +10,44 @@ require('dotenv').config();
 // USDC Constants
 const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 
-// Solana connection
-const solanaConnection = new Connection(
-  process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
-  {
-    commitment: 'confirmed',
-    maxSupportedTransactionVersion: 0  // Support legacy transactions
+// Initialize Solana connection - Try multiple RPC endpoints for compatibility
+let solanaConnection;
+
+const initializeSolanaConnection = async () => {
+  const RPC_ENDPOINTS = [
+    process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
+    'https://solana-mainnet.g.alchemy.com/v2/demo',  // Alchemy endpoint
+    'https://rpc.ankr.com/solana'  // Ankr endpoint
+  ];
+
+  for (let i = 0; i < RPC_ENDPOINTS.length; i++) {
+    const endpoint = RPC_ENDPOINTS[i];
+    try {
+      console.log(`🔗 [DEPOSIT] Attempting connection ${i + 1}/${RPC_ENDPOINTS.length} to: ${endpoint}`);
+
+      const testConnection = new Connection(endpoint, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 0  // Support legacy transactions
+      });
+
+      // Test the connection
+      const version = await testConnection.getVersion();
+      console.log(`✅ [DEPOSIT] Connection ${i + 1} successful:`, version);
+
+      solanaConnection = testConnection;
+      console.log(`🔗 [DEPOSIT] Using RPC endpoint: ${endpoint}`);
+      return; // Use the first working connection
+
+    } catch (error) {
+      console.log(`❌ [DEPOSIT] Connection ${i + 1} failed (${endpoint}): ${error.message}`);
+      if (i === RPC_ENDPOINTS.length - 1) {
+        // If all connections fail, use the default
+        console.log(`⚠️ [DEPOSIT] All custom endpoints failed, using basic connection`);
+        solanaConnection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+      }
+    }
   }
-);
+};
 
 // MongoDB connection
 const connectDB = async () => {
@@ -48,6 +78,11 @@ const transactionSchema = new mongoose.Schema({
 const GameTransaction = mongoose.model('Transaction', transactionSchema);
 
 exports.handler = async (event, context) => {
+  // Initialize Solana connection if not already done
+  if (!solanaConnection) {
+    await initializeSolanaConnection();
+  }
+
   // Get the origin from the request
   const origin = event.headers.origin || event.headers.Origin || '';
 
@@ -209,9 +244,27 @@ exports.handler = async (event, context) => {
     }
 
     console.log(`🔍 [DEPOSIT] Verifying transaction on Solana: ${transactionSignature}`);
+    console.log(`🔗 [DEPOSIT] Using connection config:`, solanaConnection._rpcEndpoint);
 
     // Get transaction details from Solana
-    const transaction = await solanaConnection.getTransaction(transactionSignature);
+    console.log(`🔍 [DEPOSIT] Attempting to fetch transaction...`);
+
+    // Try with explicit options to support legacy transactions
+    let transaction;
+    try {
+      transaction = await solanaConnection.getTransaction(transactionSignature, {
+        maxSupportedTransactionVersion: 0,
+        commitment: 'confirmed'
+      });
+      console.log(`✅ [DEPOSIT] Transaction fetch completed with options`);
+    } catch (error) {
+      console.log(`⚠️ [DEPOSIT] Transaction fetch with options failed: ${error.message}`);
+      console.log(`🔄 [DEPOSIT] Retrying without options...`);
+
+      // Fallback to basic call
+      transaction = await solanaConnection.getTransaction(transactionSignature);
+      console.log(`✅ [DEPOSIT] Transaction fetch completed (fallback)`);
+    }
 
     if (!transaction) {
       return {
@@ -360,6 +413,18 @@ exports.handler = async (event, context) => {
 
   } catch (error) {
     console.error('Deposit error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+
+    // Check if it's the transaction version error
+    if (error.message && error.message.includes('Transaction version')) {
+      console.error('❌ [DEPOSIT] Transaction version error detected!');
+      console.error('This indicates the Solana connection configuration is not working properly');
+    }
+
     return {
       statusCode: 500,
       headers: {
