@@ -170,12 +170,16 @@ To get started with game tokens:
         }
 
         // Check if user has verified wallet for auto-update
+        // BUG FIX: Must check both null AND undefined because undefined !== null is true!
+        // This was causing users with undefined wallet addresses to be treated as verified
         const hasVerifiedWallet = this.userWalletAddress !== null && this.userWalletAddress !== undefined;
         console.log(`🔍 [FRONTEND] User wallet address check:`);
         console.log(`   - userWalletAddress: ${this.userWalletAddress}`);
         console.log(`   - typeof: ${typeof this.userWalletAddress}`);
         console.log(`   - is null: ${this.userWalletAddress === null}`);
         console.log(`   - is undefined: ${this.userWalletAddress === undefined}`);
+        console.log(`   - OLD CHECK (buggy): ${this.userWalletAddress !== null}`);
+        console.log(`   - NEW CHECK (correct): ${hasVerifiedWallet}`);
         console.log(`   - hasVerifiedWallet: ${hasVerifiedWallet}`);
 
         try {
