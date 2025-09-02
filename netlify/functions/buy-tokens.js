@@ -1,8 +1,8 @@
-// Netlify Function for buying casino tokens
+// Netlify Function for verifying deposit transactions
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
-const { Connection, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction, Keypair } = require('@solana/web3.js');
-const { createTransferInstruction, getAssociatedTokenAddress, createAssociatedTokenAddressInstruction, getAccount } = require('@solana/spl-token');
+const { Connection, PublicKey } = require('@solana/web3.js');
+const { getAssociatedTokenAddress } = require('@solana/spl-token');
 const BN = require('bn.js');
 const User = require('./user-schema.js');
 
@@ -11,24 +11,14 @@ require('dotenv').config();
 // USDC Constants
 const USDC_MINT = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v');
 
+// Treasury address from environment
+const TREASURY_ADDRESS = process.env.TREASURY_ADDRESS;
+
 // Solana connection
 const solanaConnection = new Connection(
   process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
   'confirmed'
 );
-
-// Treasury Wallet Setup
-let treasuryKeypair = null;
-if (process.env.TREASURY_KEYPAIR) {
-  try {
-    const keypairString = process.env.TREASURY_KEYPAIR;
-    const keypairData = keypairString.replace(/^\[|\]$/g, '').split(',').map(num => parseInt(num.trim()));
-    treasuryKeypair = Keypair.fromSecretKey(new Uint8Array(keypairData));
-    console.log('Treasury wallet loaded for token purchases');
-  } catch (error) {
-    console.error('Error loading treasury keypair:', error);
-  }
-}
 
 // MongoDB connection
 const connectDB = async () => {
@@ -57,6 +47,18 @@ const transactionSchema = new mongoose.Schema({
 });
 
 const GameTransaction = mongoose.model('Transaction', transactionSchema);
+
+// Helper function to get treasury ATA
+async function getTreasuryATA() {
+  if (!TREASURY_ADDRESS) return null;
+  try {
+    const treasuryPubkey = new PublicKey(TREASURY_ADDRESS);
+    return await getAssociatedTokenAddress(USDC_MINT, treasuryPubkey);
+  } catch (error) {
+    console.error('Error getting treasury ATA:', error);
+    return null;
+  }
+}
 
 exports.handler = async (event, context) => {
   // Only allow POST requests
@@ -134,10 +136,9 @@ exports.handler = async (event, context) => {
     }
 
     // Parse request body
-    const { amount } = JSON.parse(event.body);
+    const { solanaTxHash } = JSON.parse(event.body);
 
-    // Validate amount
-    if (!amount || typeof amount !== 'number' || amount <= 0 || amount > 10000) {
+    if (!solanaTxHash) {
       return {
         statusCode: 400,
         headers: {
@@ -145,12 +146,26 @@ exports.handler = async (event, context) => {
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Allow-Methods': 'POST, OPTIONS'
         },
-        body: JSON.stringify({ error: 'Invalid amount. Must be between 0.01 and 10,000 USDC' })
+        body: JSON.stringify({ error: 'Transaction hash is required' })
+      };
+    }
+
+    // Check if transaction was already processed
+    const existingTx = await GameTransaction.findOne({ solanaTxHash });
+    if (existingTx) {
+      console.log(`⚠️ [VERIFY-DEPOSIT] Transaction already processed: ${solanaTxHash}`);
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS'
+        },
+        body: JSON.stringify({ error: 'Transaction already processed' })
       };
     }
 
     // Get user
-
     const user = await User.findById(decoded.userId);
     if (!user) {
       return {
@@ -164,117 +179,9 @@ exports.handler = async (event, context) => {
       };
     }
 
-    if (!user.solanaAddress) {
-      return {
-        statusCode: 400,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS'
-        },
-        body: JSON.stringify({ error: 'Solana wallet not connected' })
-      };
-    }
-
-    // Check treasury wallet
-    if (!treasuryKeypair) {
-      return {
-        statusCode: 500,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS'
-        },
-        body: JSON.stringify({ error: 'Treasury wallet not configured' })
-      };
-    }
-
-    // Convert amount to lamports (USDC has 6 decimals)
-    const amountLamports = Math.floor(amount * 1000000);
-
-    const userPublicKey = new PublicKey(user.solanaAddress);
-    const treasuryPublicKey = treasuryKeypair.publicKey;
-
-    // Get associated token accounts
-    const userATA = await getAssociatedTokenAddress(USDC_MINT, userPublicKey);
-    const treasuryATA = await getAssociatedTokenAddress(USDC_MINT, treasuryPublicKey);
-
-    // Check if user has enough USDC
-    try {
-      const userTokenAccount = await solanaConnection.getTokenAccountBalance(userATA);
-      const userBalance = userTokenAccount.value.uiAmount || 0;
-
-      if (userBalance < amount) {
-        return {
-          statusCode: 400,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS'
-          },
-          body: JSON.stringify({ error: `Insufficient USDC balance. You have ${userBalance} USDC` })
-        };
-      }
-    } catch (error) {
-      return {
-        statusCode: 400,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS'
-        },
-        body: JSON.stringify({ error: 'Could not check USDC balance. Make sure you have an Associated Token Account' })
-      };
-    }
-
-    // Create transaction
-    const transaction = new Transaction();
-
-    // Check if treasury ATA exists, create if not
-    try {
-      await getAccount(solanaConnection, treasuryATA);
-    } catch (error) {
-      // Treasury ATA doesn't exist, create it
-      transaction.add(
-        createAssociatedTokenAddressInstruction(
-          treasuryPublicKey,
-          treasuryATA,
-          treasuryPublicKey,
-          USDC_MINT
-        )
-      );
-    }
-
-    // Add transfer instruction
-    transaction.add(
-      createTransferInstruction(
-        userATA,
-        treasuryATA,
-        userPublicKey,
-        amountLamports
-      )
-    );
-
-    // Verify the signed transaction from frontend
-    console.log(`🔍 [BUY-TOKENS] Verifying real USDC transfer transaction...`);
-
-    const { solanaTxHash } = JSON.parse(event.body);
-    if (!solanaTxHash) {
-      console.log(`❌ [BUY-TOKENS] No transaction hash provided`);
-      return {
-        statusCode: 400,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS'
-        },
-        body: JSON.stringify({ error: 'Transaction hash is required' })
-      };
-    }
-
-    console.log(`🔍 [BUY-TOKENS] Verifying transaction: ${solanaTxHash}`);
-
     // Verify transaction on Solana blockchain
+    console.log(`🔍 [VERIFY-DEPOSIT] Verifying transaction: ${solanaTxHash}`);
+
     let transactionDetails;
     try {
       transactionDetails = await solanaConnection.getTransaction(solanaTxHash, {
@@ -283,7 +190,7 @@ exports.handler = async (event, context) => {
       });
 
       if (!transactionDetails) {
-        console.log(`❌ [BUY-TOKENS] Transaction not found: ${solanaTxHash}`);
+        console.log(`❌ [VERIFY-DEPOSIT] Transaction not found: ${solanaTxHash}`);
         return {
           statusCode: 400,
           headers: {
@@ -295,27 +202,36 @@ exports.handler = async (event, context) => {
         };
       }
 
-      console.log(`✅ [BUY-TOKENS] Transaction found on blockchain`);
+      console.log(`✅ [VERIFY-DEPOSIT] Transaction found on blockchain`);
 
-      // Verify transaction details
+      // Extract transaction details
       const tx = transactionDetails.transaction;
       const accountKeys = tx.message.accountKeys;
 
-      // Find the transfer instruction
+      // Find the transfer instruction and amount
       let transferFound = false;
       let actualAmount = 0;
+      let fromAddress = '';
+      let toAddress = '';
 
       for (const instruction of tx.message.instructions) {
-        // Check if this is a token transfer (program ID for SPL Token)
-        if (instruction.programIdIndex === accountKeys.length - 1) { // Last account is usually the program
+        // Check if this is a token transfer
+        if (instruction.programIdIndex === accountKeys.length - 1) {
           const programId = accountKeys[instruction.programIdIndex];
-          if (programId.toString() === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') { // SPL Token program
-            // This is likely a token transfer
+          if (programId.toString() === 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') {
             const instructionData = instruction.data;
             if (instructionData && instructionData.length >= 9) {
-              // Extract amount from transfer instruction (bytes 1-8 are the amount)
+              // Extract amount (bytes 1-8)
               const amountBytes = instructionData.slice(1, 9);
-              actualAmount = Number(new BN(amountBytes, 'le').toString()) / 1000000; // Convert from lamports to USDC
+              actualAmount = Number(new BN(amountBytes, 'le').toString()) / 1000000;
+
+              // Extract accounts (source and destination)
+              const sourceAccountIndex = instruction.accounts[0];
+              const destAccountIndex = instruction.accounts[1];
+
+              fromAddress = accountKeys[sourceAccountIndex]?.toString() || '';
+              toAddress = accountKeys[destAccountIndex]?.toString() || '';
+
               transferFound = true;
               break;
             }
@@ -323,8 +239,8 @@ exports.handler = async (event, context) => {
         }
       }
 
-      if (!transferFound) {
-        console.log(`❌ [BUY-TOKENS] No token transfer found in transaction`);
+      if (!transferFound || actualAmount <= 0) {
+        console.log(`❌ [VERIFY-DEPOSIT] No valid token transfer found`);
         return {
           statusCode: 400,
           headers: {
@@ -336,9 +252,14 @@ exports.handler = async (event, context) => {
         };
       }
 
-      // Verify amount matches expected
-      if (Math.abs(actualAmount - amount) > 0.000001) { // Small tolerance for floating point
-        console.log(`❌ [BUY-TOKENS] Amount mismatch: expected ${amount}, got ${actualAmount}`);
+      console.log(`✅ [VERIFY-DEPOSIT] Verified transfer: ${actualAmount} USDC from ${fromAddress} to ${toAddress}`);
+
+      // For first-time deposits, verify the user's wallet address
+      if (!user.solanaAddress) {
+        console.log(`🔑 [VERIFY-DEPOSIT] Setting user wallet address: ${fromAddress}`);
+        user.solanaAddress = fromAddress;
+      } else if (user.solanaAddress !== fromAddress) {
+        console.log(`❌ [VERIFY-DEPOSIT] Wallet address mismatch: expected ${user.solanaAddress}, got ${fromAddress}`);
         return {
           statusCode: 400,
           headers: {
@@ -346,14 +267,12 @@ exports.handler = async (event, context) => {
             'Access-Control-Allow-Headers': 'Content-Type, Authorization',
             'Access-Control-Allow-Methods': 'POST, OPTIONS'
           },
-          body: JSON.stringify({ error: `Amount mismatch: expected ${amount} USDC, transaction shows ${actualAmount} USDC` })
+          body: JSON.stringify({ error: 'Transaction must be from your verified wallet address' })
         };
       }
 
-      console.log(`✅ [BUY-TOKENS] Transaction verified: ${actualAmount} USDC transferred`);
-
     } catch (error) {
-      console.error(`❌ [BUY-TOKENS] Transaction verification failed:`, error);
+      console.error(`❌ [VERIFY-DEPOSIT] Transaction verification failed:`, error);
       return {
         statusCode: 500,
         headers: {
@@ -365,41 +284,31 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // Check if transaction was already processed
-    const existingTx = await GameTransaction.findOne({ solanaTxHash });
-    if (existingTx) {
-      console.log(`⚠️ [BUY-TOKENS] Transaction already processed: ${solanaTxHash}`);
-      return {
-        statusCode: 400,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS'
-        },
-        body: JSON.stringify({ error: 'Transaction already processed' })
-      };
-    }
-
     // Update user balance and create transaction record
     const oldBalance = user.gameBalance;
-    user.gameBalance += amount;
+    user.gameBalance += actualAmount;
     await user.save();
 
-    console.log(`💰 [BUY-TOKENS] Updated user balance: ${oldBalance} → ${user.gameBalance} casino tokens`);
+    console.log(`💰 [VERIFY-DEPOSIT] Updated user balance: ${oldBalance} → ${user.gameBalance} casino tokens`);
 
     const gameTransaction = new GameTransaction({
       userId: user._id,
       type: 'deposit',
-      amount: amount, // USDC amount
-      tokenAmount: amount, // Casino tokens credited
+      amount: actualAmount,
+      tokenAmount: actualAmount,
       fromAddress: user.solanaAddress,
-      toAddress: treasuryPublicKey.toString(),
+      toAddress: 'TREASURY',
       solanaTxHash: solanaTxHash,
       status: 'completed'
     });
     await gameTransaction.save();
 
-    console.log(`✅ [BUY-TOKENS] Transaction record saved: ${solanaTxHash}`);
+    console.log(`✅ [VERIFY-DEPOSIT] Transaction record saved: ${solanaTxHash}`);
+
+    const isFirstDeposit = !user.solanaAddress;
+    const message = isFirstDeposit
+      ? `🎉 First deposit successful! Your wallet has been verified and you received ${actualAmount} casino tokens!`
+      : `Successfully deposited ${actualAmount} USDC and received ${actualAmount} casino tokens!`;
 
     return {
       statusCode: 200,
@@ -410,12 +319,12 @@ exports.handler = async (event, context) => {
       },
       body: JSON.stringify({
         success: true,
-        amount: amount,
+        usdcReceived: actualAmount,
+        gameTokensAdded: actualAmount,
         newBalance: user.gameBalance,
-        gameTokensAdded: amount,
         transactionId: gameTransaction._id,
-        solanaTxHash: solanaTxHash,
-        message: `Successfully purchased ${amount} casino tokens with ${amount} USDC!`
+        isFirstDeposit: isFirstDeposit,
+        message: message
       })
     };
 

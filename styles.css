@@ -422,37 +422,7 @@ header p {
     box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2);
 }
 
-.buy-tokens-controls {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-}
 
-.buy-tokens-header {
-    font-size: 0.9rem;
-    color: #00ff88;
-    font-weight: 600;
-    text-align: center;
-    margin-bottom: 5px;
-}
-
-.buy-btn {
-    background: linear-gradient(135deg, #ff6b35, #f7931e);
-    border: none;
-    color: white;
-    padding: 12px 20px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: 600;
-    transition: all 0.3s ease;
-    font-size: 0.9rem;
-}
-
-.buy-btn:hover {
-    background: linear-gradient(135deg, #ff5722, #e6890b);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3);
-}
 
 .transaction-history {
     margin-top: 20px;
