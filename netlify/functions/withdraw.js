@@ -308,15 +308,48 @@ exports.handler = async (event, context) => {
       )
     );
 
-    console.log(`🚀 [WITHDRAW] Initiating transfer: ${amount} USDC (${amount} tokens) to ${user.solanaAddress}`);
+    console.log(`🚀 [WITHDRAW] Initiating REAL USDC transfer: ${amount} USDC (${amount} tokens) to ${user.solanaAddress}`);
 
-    // For demo purposes, we'll simulate the transaction since we can't actually sign with treasury key
-    // In production, this would use the treasury keypair to sign and send the transaction
-    console.log(`🚀 [WITHDRAW] Using simulated USDC transfer (demo mode)`);
+    // Sign and send the actual transaction
+    console.log(`🚀 [WITHDRAW] Executing real Solana transaction...`);
+    let signature;
+    try {
+      // Get recent blockhash
+      const { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash('confirmed');
 
-    // Simulate transaction signature
-    const signature = `simulated_withdrawal_${Date.now()}`;
-    console.log(`✅ [WITHDRAW] Transfer completed with signature: ${signature}`);
+      transaction.recentBlockhash = blockhash;
+      transaction.lastValidBlockHeight = lastValidBlockHeight;
+      transaction.feePayer = treasuryKeypair.publicKey;
+
+      // Sign the transaction with treasury keypair
+      transaction.sign(treasuryKeypair);
+
+      // Send and confirm the transaction
+      signature = await sendAndConfirmTransaction(
+        solanaConnection,
+        transaction,
+        [treasuryKeypair],
+        {
+          skipPreflight: false,
+          commitment: 'confirmed',
+          preflightCommitment: 'confirmed'
+        }
+      );
+
+      console.log(`✅ [WITHDRAW] REAL USDC transfer completed with signature: ${signature}`);
+
+    } catch (error) {
+      console.error(`❌ [WITHDRAW] Transaction failed: ${error.message}`);
+      return {
+        statusCode: 500,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS'
+        },
+        body: JSON.stringify({ error: `Transaction failed: ${error.message}` })
+      };
+    }
 
     // Update user balance
     const oldBalance = user.gameBalance;
@@ -330,8 +363,8 @@ exports.handler = async (event, context) => {
     const gameTransaction = new GameTransaction({
       userId: user._id,
       type: 'withdraw',
-      amount: amount,
-      tokenAmount: amount,
+      amount: amount, // USDC amount
+      tokenAmount: amount, // Casino tokens withdrawn
       solanaTxHash: signature,
       fromAddress: treasuryKeypair.publicKey.toString(),
       toAddress: user.solanaAddress,
@@ -355,7 +388,7 @@ exports.handler = async (event, context) => {
         newBalance: user.gameBalance,
         transactionId: gameTransaction._id,
         solanaTxHash: signature,
-        message: `Successfully withdrew ${amount} tokens to your wallet!`
+        message: `Successfully withdrew ${amount} USDC (${amount} casino tokens) to your wallet!`
       })
     };
 
