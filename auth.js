@@ -230,11 +230,26 @@ class AuthManager {
 
                 return userData;
             } else {
-                console.error('Failed to load user profile');
+                const errorData = await response.json().catch(() => ({}));
+                console.error(`Failed to load user profile: ${response.status} - ${errorData.error || 'Unknown error'}`);
+
+                // If profile load fails, clear wallet address to force manual verification
+                if (window.solanaManager) {
+                    window.solanaManager.userWalletAddress = null;
+                    console.log(`🔄 [AUTH] Cleared wallet address due to profile load failure`);
+                }
+
                 return null;
             }
         } catch (error) {
             console.error('Error loading user profile:', error);
+
+            // If network error occurs, clear wallet address to force manual verification
+            if (window.solanaManager) {
+                window.solanaManager.userWalletAddress = null;
+                console.log(`🔄 [AUTH] Cleared wallet address due to network error`);
+            }
+
             return null;
         }
     }

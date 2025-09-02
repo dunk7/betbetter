@@ -136,6 +136,7 @@ exports.handler = async (event, context) => {
       console.log(`🔄 [DEPOSIT] Auto-updating balance for verified user ${user.email}`);
 
       if (!user.solanaAddress) {
+        console.log(`❌ [DEPOSIT] User ${user.email} attempted auto-update but has no verified wallet`);
         return {
           statusCode: 400,
           headers: {
@@ -144,7 +145,10 @@ exports.handler = async (event, context) => {
             'Access-Control-Allow-Methods': 'POST, OPTIONS',
             'Access-Control-Allow-Credentials': 'true'
           },
-          body: JSON.stringify({ error: 'No verified wallet found. Please complete your first deposit with a transaction signature.' })
+          body: JSON.stringify({
+            error: 'No verified wallet found. Please complete your first deposit with a transaction signature.',
+            requiresSignature: true
+          })
         };
       }
 

@@ -153,17 +153,18 @@ exports.handler = async (event, context) => {
       }
     }
 
-    // If user not found in database or DB connection failed, return mock user data
+    // If user not found in database or DB connection failed, return error instead of mock data
     if (!user) {
-      console.log('User not found in database, returning mock data');
-      user = {
-        _id: decoded.userId,
-        name: 'Test User',
-        email: 'test@example.com',
-        picture: '',
-        gameBalance: 0, // Users must buy tokens
-        usdcBalance: 0,
-        solanaAddress: null
+      console.log('User not found in database or DB connection failed');
+      return {
+        statusCode: 404,
+        headers: {
+          'Access-Control-Allow-Origin': isAllowedOrigin ? origin : 'https://primimus.com',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'Access-Control-Allow-Methods': 'GET, OPTIONS',
+          'Access-Control-Allow-Credentials': 'true'
+        },
+        body: JSON.stringify({ error: 'User profile not found. Please try logging in again.' })
       };
     }
 
@@ -194,24 +195,15 @@ exports.handler = async (event, context) => {
 
   } catch (error) {
     console.error('Profile fetch error:', error.message);
-    // Return fallback data instead of error to prevent 404
     return {
-      statusCode: 200,
+      statusCode: 500,
       headers: {
         'Access-Control-Allow-Origin': isAllowedOrigin ? origin : 'https://primimus.com',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         'Access-Control-Allow-Methods': 'GET, OPTIONS',
         'Access-Control-Allow-Credentials': 'true'
       },
-      body: JSON.stringify({
-        id: 'fallback-user',
-        name: 'Test User',
-        email: 'test@example.com',
-        picture: '',
-        gameBalance: 0, // Users must buy tokens
-        usdcBalance: 0,
-        solanaAddress: null
-      })
+      body: JSON.stringify({ error: 'Failed to load user profile. Please try again.' })
     };
   }
 };
