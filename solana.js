@@ -295,6 +295,7 @@ To get started with game tokens:
     updateWalletVerificationUI() {
         const walletStatus = document.getElementById('wallet-status');
         const verifiedAddress = document.getElementById('verified-address');
+        const securityNotice = document.querySelector('.security-notice');
 
         if (this.userWalletAddress) {
             // User has verified wallet
@@ -302,9 +303,25 @@ To get started with game tokens:
             if (verifiedAddress) {
                 verifiedAddress.textContent = `${this.userWalletAddress.slice(0, 8)}...${this.userWalletAddress.slice(-8)}`;
             }
+
+            // Hide the security notice since wallet is now verified
+            if (securityNotice) {
+                securityNotice.style.display = 'none';
+            }
+
+            // Auto-hide the wallet verified message after 3 seconds
+            setTimeout(() => {
+                if (walletStatus) {
+                    walletStatus.style.display = 'none';
+                }
+            }, 3000);
         } else {
             // No verified wallet yet
             if (walletStatus) walletStatus.style.display = 'none';
+            // Show security notice for unverified wallets
+            if (securityNotice) {
+                securityNotice.style.display = 'block';
+            }
         }
     }
 
