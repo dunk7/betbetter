@@ -5,18 +5,38 @@ class SolanaManager {
         this.gameBalance = 0; // Will be loaded from backend
         this.apiBase = this.getApiBaseUrl();
         this.treasuryAddress = null;
-        this.userWalletAddress = null; // User's verified wallet address
+        this.userWalletAddress = null; // User's verified wallet address (deposit verification)
+        this.userWithdrawAddress = null; // User's explicit personal withdrawal address
         this.init();
     }
 
     getApiBaseUrl() {
-        // Check if we're running on primimus.com (production)
-        if (window.location.hostname === 'primimus.com' || window.location.hostname === 'www.primimus.com') {
-            // Use Netlify Functions URLs
-            return 'https://primimus.com/.netlify/functions';
+        const host = window.location.hostname;
+        const isLocal = host === 'localhost' || host === '127.0.0.1';
+        if (isLocal) return 'http://localhost:5000/api';
+        return '/.netlify/functions';
+    }
+
+    // Map function-style endpoints to Express routes when running locally
+    resolveApi(path) {
+        const base = this.apiBase;
+        if (base.includes('localhost:5000')) {
+            const mapping = {
+                'treasury-address': 'treasury-address',
+                'treasury-balance': 'treasury-balance',
+                'transactions': 'transactions',
+                'user-profile': 'user/profile',
+                'user-reconcile-balance': 'user/reconcile-balance',
+                'user-stats': 'user/stats',
+                'deposit': 'deposit',
+                'withdraw': 'withdraw',
+                'auth-google': 'auth/google',
+                'user-update-settings': 'user/update-settings'
+            };
+            const mapped = mapping[path] || path;
+            return `${base}/${mapped}`;
         }
-        // Development fallback
-        return 'http://localhost:5000/api';
+        return `${base}/${path}`;
     }
 
     init() {
@@ -48,6 +68,11 @@ class SolanaManager {
         const withdrawBtn = document.getElementById('withdraw-btn');
         const copyTreasuryBtn = document.getElementById('copy-treasury-address-btn');
         const verifyDepositBtn = document.getElementById('verify-deposit-btn');
+        const settingsBtn = document.getElementById('settings-btn');
+        const settingsModal = document.getElementById('settings-modal');
+        const settingsCancel = document.getElementById('settings-cancel-btn');
+        const settingsSave = document.getElementById('settings-save-btn');
+        const withdrawAddressInput = document.getElementById('withdraw-address-input');
 
         if (depositBtn) {
             depositBtn.addEventListener('click', () => this.showDepositInstructions());
@@ -57,7 +82,64 @@ class SolanaManager {
             withdrawBtn.addEventListener('click', () => this.handleWithdraw());
         }
 
-
+        if (settingsBtn && settingsModal) {
+            settingsBtn.addEventListener('click', () => {
+                if (!window.authManager?.isAuthenticated) {
+                    this.showError('Please login first.');
+                    return;
+                }
+                // Pre-fill input with current setting if available
+                if (withdrawAddressInput) {
+                    withdrawAddressInput.value = this.userWithdrawAddress || '';
+                }
+                settingsModal.style.display = 'flex';
+            });
+        }
+        if (settingsCancel && settingsModal) {
+            settingsCancel.addEventListener('click', () => {
+                settingsModal.style.display = 'none';
+            });
+        }
+        if (settingsModal) {
+            settingsModal.addEventListener('click', (e) => {
+                if (e.target === settingsModal) {
+                    settingsModal.style.display = 'none';
+                }
+            });
+        }
+        if (settingsSave && withdrawAddressInput && settingsModal) {
+            settingsSave.addEventListener('click', async () => {
+                const addr = (withdrawAddressInput.value || '').trim();
+                if (!addr) {
+                    this.showError('Please enter a Solana address.');
+                    return;
+                }
+                if (!window.authManager?.token) {
+                    this.showError('Please login first.');
+                    return;
+                }
+                try {
+                    const res = await fetch(this.resolveApi('user-update-settings'), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${window.authManager.token}`
+                        },
+                        body: JSON.stringify({ withdrawAddress: addr })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) {
+                        throw new Error(data.error || 'Failed to save settings');
+                    }
+                    this.userWithdrawAddress = data.withdrawAddress;
+                    this.showSuccess('Withdrawal address saved. Withdrawals will go to this wallet.');
+                    this.updateHeaderWalletDisplay();
+                    settingsModal.style.display = 'none';
+                } catch (err) {
+                    this.showError(err.message || 'Failed to save settings');
+                }
+            });
+        }
 
         if (copyTreasuryBtn) {
             copyTreasuryBtn.addEventListener('click', () => this.copyTreasuryAddress());
@@ -70,7 +152,7 @@ class SolanaManager {
 
     async loadTreasuryAddress() {
         try {
-            const response = await fetch(`${this.apiBase}/treasury-address`);
+            const response = await fetch(this.resolveApi('treasury-address'));
 
             if (response.ok) {
                 const data = await response.json();
@@ -214,7 +296,7 @@ To get started with game tokens:
             console.log(`📤 [FRONTEND] Sending deposit request...`);
             this.showInfo(statusMessage);
 
-            const response = await fetch(`${this.apiBase}/deposit`, {
+            const response = await fetch(this.resolveApi('deposit'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -235,7 +317,7 @@ To get started with game tokens:
             console.log(`✅ [FRONTEND] Deposit API success`);
 
             // Update local balances
-            this.gameBalance = data.newBalance;
+            this.gameBalance = data.newBalance || data.newGameBalance || this.gameBalance;
 
             // Update game balance
             if (window.gameInstance) {
@@ -246,12 +328,13 @@ To get started with game tokens:
             // Handle different response types
             if (data.autoUpdated) {
                 // Auto-update success
-                this.showSuccess(`✅ Balance automatically updated! You now have ${data.newBalance} tokens.`);
+                this.showSuccess(`✅ Balance automatically updated! You now have ${data.newBalance ?? data.newGameBalance} tokens.`);
                 this.updateScanStatus('found');
-                if (data.gameTokensAdded !== 0) {
+                if ((data.gameTokensAdded ?? 0) !== 0) {
                     setTimeout(() => {
-                        const sign = data.gameTokensAdded > 0 ? '+' : '';
-                        this.showSuccess(`${sign}${data.gameTokensAdded} tokens from recent transactions.`);
+                        const added = data.gameTokensAdded ?? 0;
+                        const sign = added > 0 ? '+' : '';
+                        this.showSuccess(`${sign}${added} tokens from recent transactions.`);
                     }, 1500);
                 }
             } else if (data.walletVerified) {
@@ -263,7 +346,11 @@ To get started with game tokens:
                 }, 2000);
             } else {
                 // Regular deposit success
-                this.showSuccess(`Successfully deposited ${data.usdcReceived} USDC (${data.feeDeducted}¢ fee deducted) → ${data.usdcAfterFee} USDC = ${data.gameTokensAdded} tokens!`);
+                if (data.usdcReceived !== undefined) {
+                    this.showSuccess(`Successfully deposited ${data.usdcReceived} USDC (${data.feeDeducted}¢ fee deducted) → ${data.usdcAfterFee} USDC = ${data.gameTokensAdded} tokens!`);
+                } else {
+                    this.showSuccess('Deposit processed.');
+                }
             }
 
             // Update header wallet display immediately
@@ -329,7 +416,7 @@ To get started with game tokens:
         if (!window.authManager?.token) return;
 
         try {
-            const response = await fetch(`${this.apiBase}/treasury-balance`, {
+            const response = await fetch(this.resolveApi('treasury-balance'), {
                 headers: {
                     'Authorization': `Bearer ${window.authManager.token}`
                 }
@@ -337,23 +424,24 @@ To get started with game tokens:
 
             if (response.ok) {
                 const data = await response.json();
+                const val = data.formattedBalance || `${(data.usdcBalance || 0).toFixed(2)} USDC`;
                 const treasuryBalanceElement = document.getElementById('treasuryBalance');
-                if (treasuryBalanceElement) {
-                    treasuryBalanceElement.textContent = data.formattedBalance;
-                }
+                const treasuryBalanceInline = document.getElementById('treasuryBalanceInline');
+                if (treasuryBalanceElement) treasuryBalanceElement.textContent = val;
+                if (treasuryBalanceInline) treasuryBalanceInline.textContent = val;
             } else {
                 console.log('Treasury balance not available');
                 const treasuryBalanceElement = document.getElementById('treasuryBalance');
-                if (treasuryBalanceElement) {
-                    treasuryBalanceElement.textContent = 'N/A';
-                }
+                const treasuryBalanceInline = document.getElementById('treasuryBalanceInline');
+                if (treasuryBalanceElement) treasuryBalanceElement.textContent = 'N/A';
+                if (treasuryBalanceInline) treasuryBalanceInline.textContent = 'N/A';
             }
         } catch (error) {
             console.error('Error loading treasury balance:', error);
             const treasuryBalanceElement = document.getElementById('treasuryBalance');
-            if (treasuryBalanceElement) {
-                treasuryBalanceElement.textContent = 'N/A';
-            }
+            const treasuryBalanceInline = document.getElementById('treasuryBalanceInline');
+            if (treasuryBalanceElement) treasuryBalanceElement.textContent = 'N/A';
+            if (treasuryBalanceInline) treasuryBalanceInline.textContent = 'N/A';
         }
     }
 
@@ -386,9 +474,10 @@ To get started with game tokens:
         // Update user wallet display in header
         const userWallet = document.getElementById('user-wallet');
         if (userWallet) {
-            if (this.userWalletAddress) {
-                userWallet.textContent = `Wallet: ${this.userWalletAddress.slice(0, 7)}...`;
-                console.log(`✅ [HEADER WALLET] Updated to: ${this.userWalletAddress.slice(0, 7)}...`);
+            const displayAddr = this.userWithdrawAddress || this.userWalletAddress;
+            if (displayAddr) {
+                userWallet.textContent = `Wallet: ${displayAddr.slice(0, 7)}...`;
+                console.log(`✅ [HEADER WALLET] Updated to: ${displayAddr.slice(0, 7)}...`);
             } else {
                 userWallet.textContent = 'Wallet: Not connected';
                 console.log(`ℹ️ [HEADER WALLET] No wallet connected`);
@@ -532,9 +621,10 @@ To get started with game tokens:
             return;
         }
 
-        if (!this.userWalletAddress) {
-            console.log(`❌ [FRONTEND] No verified wallet address`);
-            this.showError('You must make a deposit first to verify your wallet address before withdrawing.');
+        const destinationAddress = this.userWithdrawAddress || this.userWalletAddress;
+        if (!destinationAddress) {
+            console.log(`❌ [FRONTEND] No withdrawal address configured`);
+            this.showError('Please set your personal withdrawal address in Settings before withdrawing.');
             return;
         }
 
@@ -546,17 +636,16 @@ To get started with game tokens:
 
         try {
             console.log(`📤 [FRONTEND] Sending withdrawal request...`);
-            this.showInfo('Processing withdrawal to your verified wallet...');
+            this.showInfo('Processing withdrawal to your saved wallet...');
 
-            const response = await fetch(`${this.apiBase}/withdraw`, {
+            const response = await fetch(this.resolveApi('withdraw'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${window.authManager.token}`
                 },
                 body: JSON.stringify({
-                    amount,
-                    userSolanaAddress: this.userWalletAddress
+                    amount
                 })
             });
 
@@ -567,12 +656,17 @@ To get started with game tokens:
 
             if (!response.ok) {
                 console.log(`❌ [FRONTEND] Withdrawal API error:`, data.error);
-                throw new Error(data.error || 'Withdrawal failed');
+                if (data.requiresWithdrawAddress) {
+                    this.showError('Please set your personal wallet in Settings before withdrawing.');
+                } else {
+                    this.showError(data.error || 'Withdrawal failed');
+                }
+                return;
             }
             console.log(`✅ [FRONTEND] Withdrawal API success`);
 
             // Update local balances
-            this.gameBalance = parseFloat(data.newBalance) || 0;
+            this.gameBalance = parseFloat(data.newBalance || data.newGameBalance || this.gameBalance) || 0;
             console.log(`💰 [WITHDRAW] Updated gameBalance to: ${this.gameBalance}`);
 
             // Update game balance
@@ -655,7 +749,7 @@ To get started with game tokens:
         if (!window.authManager?.token) return;
 
         try {
-            const response = await fetch(`${this.apiBase}/user-profile`, {
+            const response = await fetch(this.resolveApi('user-profile'), {
                 headers: {
                     'Authorization': `Bearer ${window.authManager.token}`
                 }
@@ -667,6 +761,7 @@ To get started with game tokens:
                 console.log(`💰 [USER DATA] Game tokens: ${userData.gameBalance}`);
                 console.log(`💵 [USER DATA] USDC balance: ${userData.usdcBalance}`);
                 console.log(`🔑 [USER DATA] Wallet address: ${userData.solanaAddress}`);
+                console.log(`⚙️  [USER DATA] Withdraw address: ${userData.withdrawAddress}`);
                 console.log(`🔍 [USER DATA] Wallet address details:`);
                 console.log(`   - typeof: ${typeof userData.solanaAddress}`);
                 console.log(`   - is null: ${userData.solanaAddress === null}`);
@@ -677,6 +772,7 @@ To get started with game tokens:
                 this.gameBalance = parseFloat(userData.gameBalance) || 0;
                 this.userBalance = parseFloat(userData.usdcBalance) || 0;
                 this.userWalletAddress = userData.solanaAddress; // Store verified wallet address
+                this.userWithdrawAddress = userData.withdrawAddress || null;
 
                 console.log(`✅ [BALANCE SET] Game balance: ${this.gameBalance}, USDC balance: ${this.userBalance}`);
                 console.log(`🔑 [WALLET ADDRESS] Loaded: ${this.userWalletAddress}`);
@@ -723,7 +819,7 @@ To get started with game tokens:
         try {
             console.log(`🔄 [BALANCE_RECONCILE] Starting balance reconciliation...`);
 
-            const response = await fetch(`${this.apiBase}/user-reconcile-balance`, {
+            const response = await fetch(this.resolveApi('user-reconcile-balance'), {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${window.authManager.token}`
@@ -766,7 +862,7 @@ To get started with game tokens:
         if (!window.authManager?.token) return;
 
         try {
-            const response = await fetch(`${this.apiBase}/transactions`, {
+            const response = await fetch(this.resolveApi('transactions'), {
                 headers: {
                     'Authorization': `Bearer ${window.authManager.token}`
                 }
@@ -834,42 +930,23 @@ To get started with game tokens:
     }
 
     showError(message) {
-        this.showNotification(message, '#ff4444');
+        this.toast(message, '#cc3333');
     }
 
     showSuccess(message) {
-        this.showNotification(message, '#00ff88');
+        this.toast(message, '#00a86b');
     }
 
     showInfo(message) {
-        this.showNotification(message, '#ffa500');
+        this.toast(message, '#2d7bdc');
     }
 
-    showNotification(message, color) {
-        const notification = document.createElement('div');
-        notification.className = 'notification';
-        notification.innerHTML = message.replace(/\n/g, '<br>');
-        notification.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: ${color};
-            color: white;
-            padding: 15px 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            z-index: 10000;
-            animation: slideIn 0.3s ease-out;
-            max-width: 400px;
-            white-space: pre-wrap;
-        `;
-
-        document.body.appendChild(notification);
-
-        setTimeout(() => {
-            notification.style.animation = 'slideOut 0.3s ease-in';
-            setTimeout(() => notification.remove(), 300);
-        }, color === '#ff4444' ? 8000 : 4000); // Longer timeout for errors
+    toast(message, bg) {
+        const toast = document.createElement('div');
+        toast.textContent = message;
+        toast.style.cssText = `position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: ${bg}; color: #fff; padding: 12px 16px; border-radius: 8px; z-index: 10001; box-shadow: 0 10px 30px rgba(0,0,0,0.25);`;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3500);
     }
 
     showWalletTroubleshooting() {

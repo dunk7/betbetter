@@ -192,7 +192,9 @@ exports.handler = async (event, context) => {
         picture: user.picture,
         gameBalance: gameBalance,
         usdcBalance: usdcBalance,
-        solanaAddress: user.solanaAddress
+        solanaAddress: user.solanaAddress,
+        withdrawAddress: user.withdrawAddress,
+        isExchangeWallet: !!user.isExchangeWallet
       })
     };
 

@@ -191,9 +191,9 @@ exports.handler = async (event, context) => {
 
     console.log(`👤 [WITHDRAW] Processing for user: ${user.email}, current balance: ${user.gameBalance}`);
 
-    // Check if user has a verified wallet address
-    if (!user.solanaAddress) {
-      console.log(`❌ [WITHDRAW] User has no verified wallet address`);
+    // Require a dedicated withdrawal address to prevent exchange loss
+    if (!user.withdrawAddress) {
+      console.log(`❌ [WITHDRAW] No withdrawal address configured`);
       return {
         statusCode: 400,
         headers: {
@@ -201,11 +201,9 @@ exports.handler = async (event, context) => {
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Allow-Methods': 'POST, OPTIONS'
         },
-        body: JSON.stringify({ error: 'You must make a deposit first to verify your wallet address before withdrawing' })
+        body: JSON.stringify({ error: 'No personal withdrawal address set. Please add your private wallet address in Settings before withdrawing.', requiresWithdrawAddress: true })
       };
     }
-
-    console.log(`✅ [WITHDRAW] User has verified wallet: ${user.solanaAddress}`);
 
     // Check treasury wallet
     if (!treasuryKeypair) {
@@ -257,13 +255,13 @@ exports.handler = async (event, context) => {
 
     console.log(`✅ [WITHDRAW] Treasury has sufficient funds`);
 
-    // Validate user's Solana address
+    // Validate user's withdrawal Solana address
     let userPublicKey;
     try {
-      userPublicKey = new PublicKey(user.solanaAddress);
-      console.log(`✅ [WITHDRAW] Valid Solana address: ${userPublicKey.toString()}`);
+      userPublicKey = new PublicKey(user.withdrawAddress);
+      console.log(`✅ [WITHDRAW] Valid withdrawal address: ${userPublicKey.toString()}`);
     } catch (error) {
-      console.log(`❌ [WITHDRAW] Invalid Solana address: ${user.solanaAddress}`);
+      console.log(`❌ [WITHDRAW] Invalid withdrawal address: ${user.withdrawAddress}`);
       return {
         statusCode: 400,
         headers: {
@@ -271,7 +269,7 @@ exports.handler = async (event, context) => {
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Allow-Methods': 'POST, OPTIONS'
         },
-        body: JSON.stringify({ error: 'Invalid Solana address' })
+        body: JSON.stringify({ error: 'Invalid withdrawal address. Please update your Settings.' })
       };
     }
 
@@ -311,7 +309,7 @@ exports.handler = async (event, context) => {
       )
     );
 
-    console.log(`🚀 [WITHDRAW] Initiating REAL USDC transfer: ${amount} USDC (${amount} tokens) to ${user.solanaAddress}`);
+    console.log(`🚀 [WITHDRAW] Initiating REAL USDC transfer: ${amount} USDC (${amount} tokens) to ${user.withdrawAddress}`);
 
     // Sign and send the actual transaction
     console.log(`🚀 [WITHDRAW] Executing real Solana transaction...`);
@@ -370,13 +368,13 @@ exports.handler = async (event, context) => {
       tokenAmount: amount, // Casino tokens withdrawn
       solanaTxHash: signature,
       fromAddress: treasuryKeypair.publicKey.toString(),
-      toAddress: user.solanaAddress,
+      toAddress: user.withdrawAddress,
       status: 'completed'
     });
     await gameTransaction.save();
 
     console.log(`✅ [WITHDRAW] Transaction record saved with ID: ${gameTransaction._id}`);
-    console.log(`🎉 [WITHDRAW] SUCCESS: ${amount} tokens → ${amount} USDC to ${user.solanaAddress} (${signature})`);
+    console.log(`🎉 [WITHDRAW] SUCCESS: ${amount} tokens → ${amount} USDC to ${user.withdrawAddress} (${signature})`);
 
     return {
       statusCode: 200,

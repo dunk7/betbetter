@@ -21,6 +21,7 @@
                     <div class="user-name" id="user-name"></div>
                     <div class="user-wallet" id="user-wallet">Wallet: Not connected</div>
                 </div>
+                        <button id="settings-btn" class="wallet-btn settings-btn">⚙️</button>
                         <button id="logout-btn" class="logout-btn">Logout</button>
                     </div>
                     <div id="login-section" class="login-section">
@@ -49,9 +50,7 @@
         <div class="game-area">
             <div class="balance-section">
                 <h2>Your Tokens: <span id="tokenBalance">0.00</span></h2>
-                <div class="balance-info">
-                    <div class="treasury-balance">Treasury: <span id="treasuryBalance">Loading...</span></div>
-                </div>
+                <div class="balance-info"></div>
                 <div id="wallet-section" class="wallet-section" style="display: none;">
                     <div class="wallet-controls">
                         <div class="security-notice">
@@ -62,9 +61,16 @@
 
                         <div class="treasury-info">
                             <div class="treasury-address-display">
-                                <span>Treasury: </span>
-                                <span id="treasury-address-display">Loading...</span>
-                                <button id="copy-treasury-address-btn" class="copy-btn" title="Copy Treasury Address">📋</button>
+                                <span class="treasury-icon" aria-hidden="true">🏦</span>
+                                <span class="treasury-label">Treasury</span>
+                                <span id="treasury-address-display" class="treasury-address-text">Loading...</span>
+                                <button id="copy-treasury-address-btn" class="copy-btn" title="Copy Treasury Address">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                                        <rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect>
+                                        <rect x="4" y="4" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2"></rect>
+                                    </svg>
+                                </button>
+                                <span id="treasuryBalanceInline" class="treasury-amount-chip">Loading...</span>
                             </div>
                         </div>
 
@@ -84,7 +90,7 @@
                             </div>
                         </div>
 
-
+                        
 
                         <div class="withdraw-controls">
                             <input type="number" id="withdraw-amount" placeholder="Token amount" step="1" min="1">
@@ -151,6 +157,20 @@
                 <span class="version-date">2025</span>
             </div>
         </footer>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal" style="display:none; position: fixed; top: 0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.6); z-index: 10000; align-items: center; justify-content: center;">
+        <div class="modal-content" style="background: #111; padding: 20px; border-radius: 10px; width: 90%; max-width: 480px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); border: 1px solid #222;">
+            <h3 style="margin-top: 0;">Settings</h3>
+            <p style="font-size: 0.9rem; color: #bbb; line-height: 1.4;">Set your personal Solana wallet address to receive withdrawals. Do not use exchange deposit addresses (Coinbase, etc.).</p>
+            <label for="withdraw-address-input" style="display:block; margin: 10px 0 4px;">Personal Withdrawal Address</label>
+            <input id="withdraw-address-input" type="text" placeholder="Enter your Solana address" style="width:100%; padding:10px; border-radius:6px; background:#0c0c0c; border:1px solid #222; color:#fff;">
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top: 16px;">
+                <button id="settings-cancel-btn" class="wallet-btn" style="background:#333;">Cancel</button>
+                <button id="settings-save-btn" class="wallet-btn verify-btn">Save</button>
+            </div>
+        </div>
     </div>
 
     <!-- Google OAuth -->

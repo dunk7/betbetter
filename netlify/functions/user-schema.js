@@ -7,6 +7,10 @@ const userSchema = new mongoose.Schema({
   name: String,
   picture: String,
   solanaAddress: String,
+  // Address the user wants to receive withdrawals to (personal wallet)
+  withdrawAddress: String,
+  // Flag indicating first deposit came from an exchange-managed wallet
+  isExchangeWallet: { type: Boolean, default: false },
   gameBalance: { type: Number, default: 0 },
   usdcBalance: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },

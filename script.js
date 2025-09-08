@@ -19,13 +19,23 @@ class BetBetterGame {
     }
 
     getApiBaseUrl() {
-        // Check if we're running on primimus.com (production)
-        if (window.location.hostname === 'primimus.com' || window.location.hostname === 'www.primimus.com') {
-            // Use Netlify Functions URLs
-            return 'https://primimus.com/.netlify/functions';
+        const host = window.location.hostname;
+        const isLocal = host === 'localhost' || host === '127.0.0.1';
+        if (isLocal) return 'http://localhost:5000/api';
+        return '/.netlify/functions';
+    }
+
+    resolveApi(path) {
+        const base = this.apiBase;
+        if (base.includes('localhost:5000')) {
+            const mapping = {
+                'game-place-bet': 'game/place-bet',
+                'user-stats': 'user/stats'
+            };
+            const mapped = mapping[path] || path;
+            return `${base}/${mapped}`;
         }
-        // Development fallback
-        return 'http://localhost:5000/api';
+        return `${base}/${path}`;
     }
 
     initializeElements() {
@@ -95,7 +105,7 @@ class BetBetterGame {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-            const response = await fetch(`${this.apiBase}/game-place-bet`, {
+            const response = await fetch(this.resolveApi('game-place-bet'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -381,7 +391,7 @@ class BetBetterGame {
         if (!window.authManager?.isAuthenticated) return;
 
         try {
-            const response = await fetch(`${this.apiBase}/user-stats`, {
+            const response = await fetch(this.resolveApi('user-stats'), {
                 headers: {
                     'Authorization': `Bearer ${window.authManager.token}`
                 }

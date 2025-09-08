@@ -316,6 +316,8 @@ const userSchema = new mongoose.Schema({
     name: String,
     picture: String,
     solanaAddress: String, // User's verified Solana address
+    withdrawAddress: String, // User's saved personal withdrawal address
+    isExchangeWallet: { type: Boolean, default: false },
     gameBalance: { type: Number, default: 0 }, // Starting tokens
     usdcBalance: { type: Number, default: 0 }, // USDC balance
     createdAt: { type: Date, default: Date.now },
@@ -435,12 +437,46 @@ app.get('/api/user/profile', authenticateToken, async (req, res) => {
             picture: user.picture,
             gameBalance: user.gameBalance,
             usdcBalance: usdcBalance,
-            solanaAddress: user.solanaAddress
+            solanaAddress: user.solanaAddress,
+            withdrawAddress: user.withdrawAddress,
+            isExchangeWallet: !!user.isExchangeWallet
         });
 
     } catch (error) {
         console.error('Profile fetch error:', error);
         res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// Update settings: withdraw address
+app.post('/api/user/update-settings', authenticateToken, async (req, res) => {
+    try {
+        const { withdrawAddress } = req.body;
+
+        if (!withdrawAddress) {
+            return res.status(400).json({ error: 'withdrawAddress is required' });
+        }
+
+        try {
+            new PublicKey(withdrawAddress);
+        } catch (e) {
+            return res.status(400).json({ error: 'Invalid Solana address' });
+        }
+
+        if (process.env.TREASURY_ADDRESS && withdrawAddress === process.env.TREASURY_ADDRESS) {
+            return res.status(400).json({ error: 'Withdrawal address cannot be the treasury address' });
+        }
+
+        const user = await User.findById(req.user.userId);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        user.withdrawAddress = withdrawAddress;
+        await user.save();
+
+        res.json({ success: true, withdrawAddress });
+    } catch (error) {
+        console.error('Update settings error:', error);
+        res.status(500).json({ error: 'Failed to update settings' });
     }
 });
 

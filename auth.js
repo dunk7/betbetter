@@ -10,13 +10,27 @@ class AuthManager {
     }
 
     getApiBaseUrl() {
-        // Check if we're running on primimus.com (production)
-        if (window.location.hostname === 'primimus.com' || window.location.hostname === 'www.primimus.com') {
-            // Use Netlify Functions URLs
-            return 'https://primimus.com/.netlify/functions';
+        const host = window.location.hostname;
+        const isLocal = host === 'localhost' || host === '127.0.0.1';
+        // Local development hits Express API
+        if (isLocal) return 'http://localhost:5000/api';
+        // Production/staging: use site-relative Netlify Functions (works with custom domains and netlify.app)
+        return '/.netlify/functions';
+    }
+
+    // Map function-style endpoints to Express routes when running locally
+    resolveApi(path) {
+        const base = this.apiBase;
+        if (base.includes('localhost:5000')) {
+            const mapping = {
+                'auth-google': 'auth/google',
+                'user-profile': 'user/profile',
+                'user-stats': 'user/stats'
+            };
+            const mapped = mapping[path] || path;
+            return `${base}/${mapped}`;
         }
-        // Development fallback
-        return 'http://localhost:5000/api';
+        return `${base}/${path}`;
     }
 
     init() {
@@ -81,7 +95,7 @@ class AuthManager {
 
     async verifyToken() {
         try {
-            const response = await fetch(`${this.apiBase}/user-profile`, {
+            const response = await fetch(this.resolveApi('user-profile'), {
                 headers: {
                     'Authorization': `Bearer ${this.token}`
                 }
@@ -100,7 +114,7 @@ class AuthManager {
     async handleCredentialResponse(response) {
         try {
             // Send Google token to backend for verification and user creation
-            const backendResponse = await fetch(`${this.apiBase}/auth-google`, {
+            const backendResponse = await fetch(this.resolveApi('auth-google'), {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -207,7 +221,7 @@ class AuthManager {
 
     async loadUserProfile() {
         try {
-            const response = await fetch(`${this.apiBase}/user-profile`, {
+            const response = await fetch(this.resolveApi('user-profile'), {
                 headers: {
                     'Authorization': `Bearer ${this.token}`
                 }
@@ -234,6 +248,7 @@ class AuthManager {
                     console.log(`   - gameBalance: ${userData.gameBalance}`);
                     console.log(`   - usdcBalance: ${userData.usdcBalance}`);
                     console.log(`   - solanaAddress: ${userData.solanaAddress}`);
+                    console.log(`   - withdrawAddress: ${userData.withdrawAddress}`);
                     console.log(`   - solanaAddress type: ${typeof userData.solanaAddress}`);
                     console.log(`   - solanaAddress is null: ${userData.solanaAddress === null}`);
                     console.log(`   - solanaAddress is undefined: ${userData.solanaAddress === undefined}`);
@@ -241,7 +256,9 @@ class AuthManager {
                     window.solanaManager.gameBalance = parseFloat(userData.gameBalance) || 0;
                     window.solanaManager.userBalance = parseFloat(userData.usdcBalance) || 0;
                     window.solanaManager.userWalletAddress = userData.solanaAddress;
+                    window.solanaManager.userWithdrawAddress = userData.withdrawAddress || null;
                     console.log(`🔑 [AUTH] Setting wallet address: ${userData.solanaAddress}`);
+                    console.log(`⚙️  [AUTH] Setting withdraw address: ${userData.withdrawAddress}`);
                     console.log(`🔄 [AUTH] Solana manager wallet address set to: ${window.solanaManager.userWalletAddress}`);
 
                     // Update header wallet display immediately
@@ -258,7 +275,8 @@ class AuthManager {
                 // If profile load fails, clear wallet address to force manual verification
                 if (window.solanaManager) {
                     window.solanaManager.userWalletAddress = null;
-                    console.log(`🔄 [AUTH] Cleared wallet address due to profile load failure`);
+                    window.solanaManager.userWithdrawAddress = null;
+                    console.log(`🔄 [AUTH] Cleared wallet and withdraw address due to profile load failure`);
                 }
 
                 return null;
@@ -269,7 +287,8 @@ class AuthManager {
             // If network error occurs, clear wallet address to force manual verification
             if (window.solanaManager) {
                 window.solanaManager.userWalletAddress = null;
-                console.log(`🔄 [AUTH] Cleared wallet address due to network error`);
+                window.solanaManager.userWithdrawAddress = null;
+                console.log(`🔄 [AUTH] Cleared wallet and withdraw address due to network error`);
             }
 
             return null;
